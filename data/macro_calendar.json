@@ -1,0 +1,43 @@
+{
+  "_meta": {
+    "note": "Lich tin vi mo THAT (Hoa Ky). Can tu cap nhat file nay hang thang - xem huong dan trong macro_calendar.py. Nguon: BLS (bls.gov), Federal Reserve (federalreserve.gov).",
+    "last_verified": "2026-08-24"
+  },
+  "events": [
+    {
+      "date": "2026-09-04",
+      "time_et": "08:30",
+      "name": "Nonfarm Payrolls (NFP) - Bao cao viec lam thang 8/2026",
+      "impact": "high",
+      "source": "U.S. Bureau of Labor Statistics"
+    },
+    {
+      "date": "2026-09-10",
+      "time_et": "08:30",
+      "name": "PPI - Chi so gia san xuat thang 8/2026",
+      "impact": "medium",
+      "source": "U.S. Bureau of Labor Statistics"
+    },
+    {
+      "date": "2026-09-11",
+      "time_et": "08:30",
+      "name": "CPI - Chi so gia tieu dung thang 8/2026",
+      "impact": "high",
+      "source": "U.S. Bureau of Labor Statistics"
+    },
+    {
+      "date": "2026-09-15",
+      "time_et": "-",
+      "name": "FOMC Meeting - Ngay 1/2",
+      "impact": "medium",
+      "source": "Federal Reserve"
+    },
+    {
+      "date": "2026-09-16",
+      "time_et": "14:00",
+      "name": "FOMC - Quyet dinh lai suat + Summary of Economic Projections (dot plot)",
+      "impact": "high",
+      "source": "Federal Reserve"
+    }
+  ]
+}
