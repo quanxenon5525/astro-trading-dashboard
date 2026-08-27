@@ -23,6 +23,8 @@ hoc/tai chinh hoc chinh thong cong nhan** va **khong phai loi khuyen dau tu**.
 | `score_engine.py` | Ghep tat ca thanh chi bao "vach xanh/do" 1-5/ngay + song nang luong that theo gio (Ascendant-Mat Trang + do cao Mat Trang + Void-of-Course) |
 | `i18n.py` | Toan bo nhan/nhan song ngu VN-EN (hanh tinh, goc chieu, cung hoang dao, giao dien...) |
 | `app.py` | Dashboard Streamlit chinh (bieu do 30 ngay + drill-down theo gio + chon vi tri quan sat) |
+| `telegram_notifier.py` | Gui ban tin Telegram hang ngay/hang gio (chay qua GitHub Actions), doc danh sach nguoi dang ky tu Cloudflare KV |
+| `cloudflare/telegram_webhook.js` | Cloudflare Worker xu ly lenh `/start`/`/stop` TUC THI (webhook that, khong polling) - xem huong dan deploy trong muc "Thong bao qua Telegram" |
 
 ### Do chinh xac da kiem chung (thang 8/2026)
 - Nghich hanh Sao Thuy 2026 tu tinh toan: 26/2-19/3, 29/6-22/7, 24/10-12/11 — khop +-1 ngay voi lich thuc da xac minh (26/2-20/3, 29/6-23/7, 24/10-13/11).
@@ -101,32 +103,76 @@ han 1 nguoi duy nhat) - xem phan dang ky nhieu nguoi ben duoi.
    Telegram, go `/newbot`, dat ten → BotFather tra ve 1 **token** dang
    `123456:ABC-...`.
 2. Vao repo GitHub → **Settings** → **Secrets and variables** → **Actions**
-   → **New repository secret**, tao 1 secret:
-   - `TELEGRAM_BOT_TOKEN` = token o buoc 1
-   (secret `TELEGRAM_CHAT_ID` cu, neu co, khong con dung nua - co the xoa).
-3. Vao **Settings** → **Actions** → **General** → muc **Workflow
-   permissions**, chon **"Read and write permissions"** roi Save. Buoc nay
-   BAT BUOC de workflow lang nghe dang ky (`telegram_bot_poll.yml`) tu
-   commit lai duoc danh sach nguoi dang ky vao repo.
-4. Xong phan cai dat. Muon test ngay khong doi lich, vao tab **Actions**
-   tren GitHub → chon workflow can chay thu → **Run workflow**.
+   → **New repository secret**, tao secret `TELEGRAM_BOT_TOKEN` = token o
+   buoc 1 (secret `TELEGRAM_CHAT_ID` cu, neu co, khong con dung nua - co
+   the xoa).
+3. Lam theo muc "Cho phep nhieu nguoi dang ky" ben duoi de thiet lap
+   Cloudflare Worker - **BAT BUOC** phai xong buoc nay thi `telegram_daily.yml`/
+   `telegram_hourly.yml` moi doc duoc danh sach nguoi dang ky (khong con
+   file JSON trong repo nua).
+4. Muon test ngay khong doi lich, vao tab **Actions** tren GitHub → chon
+   "Telegram Daily Digest" hoac "Telegram Hourly Energy Check" → **Run
+   workflow**.
 
-### Cho phep nhieu nguoi dang ky (lenh /start, /stop)
+### Cho phep nhieu nguoi dang ky (lenh /start, /stop) - phan hoi TUC THI
 
-`telegram_bot_poll.py` (chay qua `telegram_bot_poll.yml`, kiem tra tin
-nhan moi moi 5 phut) lang nghe 2 lenh:
+Lenh `/start`/`/stop` duoc xu ly boi **Cloudflare Worker**
+(`cloudflare/telegram_webhook.js`) thay vi GitHub Actions - vi Telegram
+GOI THANG toi Worker ngay khi co tin nhan moi (webhook that su), khong
+con kieu "cho toi lich chay dinh ky moi 5 phut" nhu truoc (co the tre vai
+chuc phut, khong dang tin cay). Cloudflare Workers mien phi, chay 24/7,
+khong bi "ngu" nhu Render free tier.
 
-- **/start** — dang ky nhan thong bao. Bot tra loi xac nhan + gui luon
-  ban tin chiem tinh cua hom nay ngay lap tuc (khong can doi den 7h sang
-  hom sau).
-- **/stop** — huy dang ky, khong nhan thong bao nua.
+**Thiet lap (1 lan duy nhat, khoang 10 phut):**
 
-Muon chia se cho nguoi khac cung dung, chi can gui link bot
-(`t.me/<username_bot>`) hoac username (`@<username_bot>`) - ai bam vao va
-go `/start` se tu dong duoc them vao danh sach nhan tin hang ngay/hang
-gio. Danh sach nay luu trong `data/subscribers.json`, tu dong duoc workflow
-cap nhat, khong can sua tay.
+1. Tao tai khoan mien phi tai [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
+   (chi can email, khong can the tin dung).
+2. Trong Cloudflare Dashboard → **Workers & Pages** → **Create** → **Create
+   Worker** → dat ten (vd `astro-telegram-bot`) → **Deploy** (dung template
+   mac dinh truoc, sua sau).
+3. Vao Worker vua tao → **Edit code** → xoa het code mau, dan toan bo noi
+   dung file `cloudflare/telegram_webhook.js` trong repo vao → **Deploy**.
+4. Tao KV namespace de luu danh sach dang ky: **Workers & Pages** →
+   **KV** → **Create a namespace** → dat ten (vd `astro-subscribers`) →
+   Create.
+5. Gan KV vao Worker: vao lai Worker → **Settings** → **Variables and
+   Secrets** (hoac **Bindings**) → **Add binding** → chon **KV
+   Namespace** → Variable name go dung `SUBSCRIBERS_KV` → chon namespace
+   vua tao o buoc 4 → Save.
+6. Them secret bot token: van o **Settings** → **Variables and Secrets**
+   → **Add variable** → Name: `TELEGRAM_BOT_TOKEN`, Value: token bot cua
+   ban, nho tick **Encrypt** → Save and deploy.
+7. Lay URL cua Worker (dang `https://astro-telegram-bot.<ten-cua-ban>.workers.dev`)
+   hien o dau trang Worker.
+8. Bao Telegram goi ve dung URL nay - mo trinh duyet (hoac dung `curl`) vao:
+   ```
+   https://api.telegram.org/bot<TOKEN>/setWebhook?url=<URL_WORKER_O_BUOC_7>
+   ```
+   (thay `<TOKEN>` va `<URL_WORKER_O_BUOC_7>` cho dung) - thay xuat hien
+   `"ok":true` la thanh cong.
+9. Dang ky menu lenh `/` hien goi y tren Telegram (chi can 1 lan, khong
+   lien quan Worker): chay tren may (hoac nho ai co Python chay ho):
+   ```
+   TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py setcommands
+   ```
+10. Lay 3 thong tin de GitHub Actions doc lai duoc danh sach dang ky tu
+    Cloudflare KV, tao them 3 secret trong GitHub (**Settings** → **Secrets
+    and variables** → **Actions**):
+    - `CF_ACCOUNT_ID` — Cloudflare Dashboard, sidebar phai trang chu co
+      **Account ID**.
+    - `CF_KV_NAMESPACE_ID` — vao **Workers & Pages** → **KV** → bam vao
+      namespace da tao o buoc 4, ID hien trong URL hoac trang chi tiet.
+    - `CF_API_TOKEN` — **My Profile** (goc tren phai) → **API Tokens** →
+      **Create Token** → chon template **"Edit Cloudflare Workers"** (co
+      quyen doc/ghi KV) → Continue to summary → Create Token → copy gia
+      tri (chi hien 1 lan duy nhat).
 
-Luu y: vi GitHub Actions chi ho tro lich chay dinh ky toi thieu moi 5
-phut (doi khi tre hon do tai he thong), phan hoi cho /start /stop co the
-mat vai phut chu khong tuc thi nhu bot chay server rieng.
+Xong 10 buoc tren: ai gui link bot (`t.me/<username_bot>`) cho nguoi khac,
+ho bam `/start` se duoc dang ky **NGAY LAP TUC** (khong con do tre), va
+`telegram_daily.yml`/`telegram_hourly.yml` se tu dong gui cho TOAN BO danh
+sach nay moi khi chay.
+
+Muon sua lai loi chao/huy dang ky, sua truc tiep trong
+`cloudflare/telegram_webhook.js` (cac hang so `WELCOME_TEXT`,
+`GOODBYE_TEXT`...) roi dan lai vao Worker → Deploy - khong lien quan gi
+den `git push`/GitHub Actions ca, vi Worker la 1 dich vu doc lap.

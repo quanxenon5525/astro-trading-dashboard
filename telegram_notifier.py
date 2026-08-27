@@ -16,13 +16,15 @@ co san). Thiet ke de chay qua GitHub Actions scheduled workflow (xem
 .github/workflows/telegram_daily.yml va telegram_hourly.yml) - KHONG dung
 Render Cron Job vi tinh nang do khong co trong goi Render mien phi.
 
-NHIEU NGUOI DUNG: khong con gui toi 1 TELEGRAM_CHAT_ID co dinh nua. Danh
-sach nguoi da dang ky duoc luu trong data/subscribers.json (list chat_id),
-ai cung co the tu dang ky bang cach nhan /start cho bot - xem
-telegram_bot_poll.py (script rieng, chay qua telegram_bot_poll.yml, lang
-nghe lenh /start va /stop) de biet cach danh sach nay duoc cap nhat.
-send_message() o day se gui cho TAT CA nguoi trong danh sach khi khong
-truyen chat_id cu the.
+NHIEU NGUOI DUNG: khong con gui toi 1 TELEGRAM_CHAT_ID co dinh nua. Ai
+cung co the tu dang ky bang cach nhan /start cho bot - lenh nay duoc xu ly
+TUC THI boi Cloudflare Worker (xem cloudflare/telegram_webhook.js), KHONG
+con polling qua GitHub Actions nua (cach cu co do tre vai phut, khong on
+dinh). Danh sach chat_id da dang ky duoc Worker luu trong Cloudflare KV -
+day la NGUON SU THAT DUY NHAT, KHONG con la file data/subscribers.json
+trong git (tranh het cac van de git lock/lech nhanh main-master). Ham
+load_subscribers() o day GOI QUA Cloudflare KV REST API de doc lai danh
+sach nay khi gui ban tin hang ngay/hang gio.
 
 QUAN TRONG ve mui gio: script nay co the chay tren server o BAT KY mui gio
 nao (vd GitHub Actions chay UTC), nen moi thoi diem trong file nay deu ep
@@ -31,17 +33,20 @@ ZoneInfo, dam bao dung gio du chay o dau. macro_calendar.event_local_datetime()
 gio cung da lam dung dieu nay (dung chung 1 cho, khong con tinh rieng o day).
 
 Bien moi truong can co (dat trong GitHub repo Settings > Secrets and
-variables > Actions):
-  TELEGRAM_BOT_TOKEN - token bot lay tu @BotFather (secret TELEGRAM_CHAT_ID
-  cu khong con can thiet nua, co the xoa)
+variables > Actions) - xem huong dan tao trong README.md muc "Thong bao
+qua Telegram":
+  TELEGRAM_BOT_TOKEN  - token bot lay tu @BotFather
+  CF_ACCOUNT_ID       - Account ID cua Cloudflare (Dashboard > sidebar phai)
+  CF_KV_NAMESPACE_ID  - ID cua KV namespace da tao va gan cho Worker
+  CF_API_TOKEN        - API Token Cloudflare co quyen doc/ghi Workers KV
 
 Cach chay thu cong (debug):
-  TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py daily
-  TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py hourly
+  TELEGRAM_BOT_TOKEN=xxx CF_ACCOUNT_ID=xxx CF_KV_NAMESPACE_ID=xxx CF_API_TOKEN=xxx python telegram_notifier.py daily
+  TELEGRAM_BOT_TOKEN=xxx CF_ACCOUNT_ID=xxx CF_KV_NAMESPACE_ID=xxx CF_API_TOKEN=xxx python telegram_notifier.py hourly
+  TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py setcommands   # dang ky menu lenh /, chi can chay 1 lan
 """
 
 import datetime
-import json
 import os
 import sys
 from zoneinfo import ZoneInfo
@@ -56,7 +61,10 @@ VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 LANG = "vi"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-SUBSCRIBERS_PATH = os.path.join(os.path.dirname(__file__), "data", "subscribers.json")
+CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
+CF_KV_NAMESPACE_ID = os.environ.get("CF_KV_NAMESPACE_ID", "")
+CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
+CF_SUBSCRIBERS_KEY = "chat_ids"
 
 DISCLAIMER = "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phải lời khuyên đầu tư."
 APP_URL = "https://dubaochiemtinh.streamlit.app/"
@@ -83,10 +91,10 @@ def now_vn() -> datetime.datetime:
 def set_bot_commands() -> None:
     """Dang ky danh sach lenh trong BOT_COMMANDS voi Telegram, de khi
     nguoi dung go '/' trong khung chat se hien menu goi y kem mo ta (vd
-    '/start - Dang ky nhan thong bao chiem tinh hang ngay'). Goi lai
-    nhieu lan khong sao - Telegram luon GHI DE bang danh sach moi nhat,
-    nen ham nay duoc goi moi lan telegram_bot_poll.py chay de menu luon
-    dong bo voi code, khong can vao BotFather chinh tay."""
+    '/start - Dang ky nhan thong bao chiem tinh hang ngay'). CHI CAN goi 1
+    LAN DUY NHAT sau khi tao bot (vd qua 'python telegram_notifier.py
+    setcommands') - Telegram luu vinh vien, khong can goi lai moi lan
+    gui tin. Khong lien quan gi den Cloudflare Worker xu ly /start, /stop."""
     if not TELEGRAM_BOT_TOKEN:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
@@ -96,48 +104,40 @@ def set_bot_commands() -> None:
 
 
 def load_subscribers() -> list:
-    """Doc danh sach chat_id da dang ky nhan thong bao. Tra ve [] neu file
-    chua ton tai (chua ai dang ky) - khong loi."""
-    if not os.path.exists(SUBSCRIBERS_PATH):
+    """Doc danh sach chat_id da dang ky, qua Cloudflare KV REST API (nguon
+    su that duy nhat - duoc Cloudflare Worker ghi vao NGAY khi co nguoi
+    /start hoac /stop, xem cloudflare/telegram_webhook.js). Tra ve [] neu
+    thieu cau hinh Cloudflare hoac chua co ai dang ky - khong loi, chi in
+    canh bao de de debug."""
+    if not (CF_ACCOUNT_ID and CF_KV_NAMESPACE_ID and CF_API_TOKEN):
+        print(
+            "[telegram_notifier] Thieu CF_ACCOUNT_ID/CF_KV_NAMESPACE_ID/CF_API_TOKEN "
+            "- khong doc duoc danh sach dang ky tu Cloudflare KV.",
+            file=sys.stderr,
+        )
         return []
-    with open(SUBSCRIBERS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f).get("chat_ids", [])
-
-
-def save_subscribers(chat_ids: list) -> None:
-    os.makedirs(os.path.dirname(SUBSCRIBERS_PATH), exist_ok=True)
-    with open(SUBSCRIBERS_PATH, "w", encoding="utf-8") as f:
-        json.dump({"chat_ids": sorted(set(chat_ids))}, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-
-
-def add_subscriber(chat_id: int) -> bool:
-    """Them 1 nguoi dang ky moi. Tra ve True neu la nguoi MOI (chua co
-    truoc do), False neu da dang ky roi (idempotent - nhan /start nhieu
-    lan khong bi trung)."""
-    ids = load_subscribers()
-    if chat_id in ids:
-        return False
-    ids.append(chat_id)
-    save_subscribers(ids)
-    return True
-
-
-def remove_subscriber(chat_id: int) -> bool:
-    """Xoa 1 nguoi dang ky (lenh /stop). Tra ve True neu thuc su co xoa."""
-    ids = load_subscribers()
-    if chat_id not in ids:
-        return False
-    ids.remove(chat_id)
-    save_subscribers(ids)
-    return True
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+        f"/storage/kv/namespaces/{CF_KV_NAMESPACE_ID}/values/{CF_SUBSCRIBERS_KEY}"
+    )
+    resp = requests.get(url, headers={"Authorization": f"Bearer {CF_API_TOKEN}"}, timeout=15)
+    if resp.status_code == 404:
+        # Chua tung co ai /start (key chua duoc Worker tao) - khong phai loi.
+        return []
+    if not resp.ok:
+        print(f"[telegram_notifier] Loi doc Cloudflare KV: {resp.status_code} {resp.text}", file=sys.stderr)
+        return []
+    try:
+        return resp.json()
+    except ValueError:
+        return []
 
 
 def send_message(text: str, chat_id: int = None) -> None:
     """Gui 1 tin nhan. Neu chat_id=None (mac dinh), gui BROADCAST cho TOAN
-    BO danh sach da dang ky trong data/subscribers.json. Loi khi gui cho 1
-    nguoi (vd ho da chan/xoa bot) chi duoc LOG lai, KHONG lam dung ca vong
-    lap - nhung nguoi con lai van phai nhan duoc tin."""
+    BO danh sach dang ky doc tu Cloudflare KV. Loi khi gui cho 1 nguoi (vd
+    ho da chan/xoa bot) chi duoc LOG lai, KHONG lam dung ca vong lap -
+    nhung nguoi con lai van phai nhan duoc tin."""
     if not TELEGRAM_BOT_TOKEN:
         raise SystemExit(
             "Thieu TELEGRAM_BOT_TOKEN trong bien moi truong "
@@ -145,7 +145,7 @@ def send_message(text: str, chat_id: int = None) -> None:
         )
     targets = [chat_id] if chat_id is not None else load_subscribers()
     if not targets:
-        print("[telegram_notifier] Chua co ai dang ky nhan tin (data/subscribers.json rong) - khong gui.")
+        print("[telegram_notifier] Chua co ai dang ky nhan tin - khong gui.")
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -281,8 +281,14 @@ def main() -> None:
             send_message(msg)
         else:
             print("[telegram_notifier] Giờ hiện tại không phải đầu 1 khung giờ sóng mạnh - không gửi.")
+    elif mode == "setcommands":
+        # Chi can chay 1 LAN DUY NHAT (thu cong) sau khi tao bot - dang ky
+        # menu lenh "/" hien tren Telegram. Khong lien quan gi den viec
+        # gui ban tin hang ngay/hang gio.
+        set_bot_commands()
+        print("[telegram_notifier] Da dang ky menu lenh /start, /stop.")
     else:
-        raise SystemExit(f"Mode khong hop le: '{mode}' (dung 'daily' hoac 'hourly')")
+        raise SystemExit(f"Mode khong hop le: '{mode}' (dung 'daily', 'hourly' hoac 'setcommands')")
 
 
 if __name__ == "__main__":
