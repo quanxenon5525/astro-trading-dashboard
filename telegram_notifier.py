@@ -62,6 +62,11 @@ DISCLAIMER = "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phả
 APP_URL = "https://dubaochiemtinh.streamlit.app/"
 APP_LINK_LINE = f"🔗 Truy cập {APP_URL} để xem chi tiết chiêm tinh"
 
+BOT_COMMANDS = [
+    {"command": "start", "description": "Đăng ký nhận thông báo chiêm tinh hàng ngày"},
+    {"command": "stop", "description": "Huỷ đăng ký, ngừng nhận thông báo"},
+]
+
 _TREND_ARROWS = {"rising": "▲", "falling": "▼", "peak_mid": "◆", "flat": "→"}
 _TREND_LABELS = {
     "rising": "Đang mạnh dần lên",
@@ -73,6 +78,21 @@ _TREND_LABELS = {
 
 def now_vn() -> datetime.datetime:
     return datetime.datetime.now(VN_TZ)
+
+
+def set_bot_commands() -> None:
+    """Dang ky danh sach lenh trong BOT_COMMANDS voi Telegram, de khi
+    nguoi dung go '/' trong khung chat se hien menu goi y kem mo ta (vd
+    '/start - Dang ky nhan thong bao chiem tinh hang ngay'). Goi lai
+    nhieu lan khong sao - Telegram luon GHI DE bang danh sach moi nhat,
+    nen ham nay duoc goi moi lan telegram_bot_poll.py chay de menu luon
+    dong bo voi code, khong can vao BotFather chinh tay."""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
+    resp = requests.post(url, json={"commands": BOT_COMMANDS}, timeout=15)
+    if not resp.ok:
+        print(f"[telegram_notifier] Loi dang ky bo lenh: {resp.status_code} {resp.text}", file=sys.stderr)
 
 
 def load_subscribers() -> list:

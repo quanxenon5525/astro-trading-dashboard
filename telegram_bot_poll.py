@@ -71,6 +71,10 @@ def poll_once() -> None:
     if not TELEGRAM_BOT_TOKEN:
         raise SystemExit("Thieu TELEGRAM_BOT_TOKEN trong bien moi truong.")
 
+    # Dam bao menu lenh "/" tren Telegram luon khop voi BOT_COMMANDS trong
+    # code - khong can vao BotFather chinh tay moi khi doi/them lenh moi.
+    tn.set_bot_commands()
+
     offset = _load_offset()
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     resp = requests.get(url, params={"offset": offset + 1, "timeout": 0}, timeout=15)
