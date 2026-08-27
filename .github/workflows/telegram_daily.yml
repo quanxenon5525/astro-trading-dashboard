@@ -1,0 +1,21 @@
+name: Telegram Daily Digest
+
+on:
+  schedule:
+    # 00:00 UTC = 07:00 gio Viet Nam (UTC+7, khong doi DST)
+    - cron: "0 0 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python telegram_notifier.py daily
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

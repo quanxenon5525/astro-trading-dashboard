@@ -78,3 +78,34 @@ dang single-page-app. `scripts/patch_og_tags.py` tu dong chen the nay vao
 file `index.html` tinh cua goi Streamlit ngay luc build tren Render (xem
 `buildCommand` trong `render.yaml`), dung anh `static/og-image.png`. Muon
 doi anh, thay file `static/og-image.png` (nen 1200x630px) roi deploy lai.
+
+## Thong bao qua Telegram
+
+`telegram_notifier.py` tu dong gui 3 loai thong bao vao Telegram qua
+**GitHub Actions** (chay doc lap, khong can Render dang thuc hay khong -
+Render Cron Job la tinh nang tra phi nen khong dung):
+
+- **Hang ngay (7h sang, VN)** — `telegram_daily.yml`: chi bao chiem tinh
+  hom nay (xanh/do + "que" Dai Cat/Cat/Tieu Cat/Binh/Tieu Hung/Hung/Dai
+  Hung), toan bo khung gio song manh du kien trong ngay, tin vi mo NGAY
+  MAI (nhac truoc 1 ngay) va tin vi mo HOM NAY (nhac dung ngay).
+- **Hang gio** — `telegram_hourly.yml`: bao thoi gian thuc dung luc BAT
+  DAU 1 khung gio song manh (khong lap lai trong cung 1 khung).
+
+### Cach thiet lap (1 lan duy nhat)
+
+1. **Tao bot**: nhan tin cho [@BotFather](https://t.me/BotFather) tren
+   Telegram, go `/newbot`, dat ten → BotFather tra ve 1 **token** dang
+   `123456:ABC-...`.
+2. **Lay chat ID**: nhan tin bat ky (vd "hi") cho bot vua tao, sau do mo
+   trinh duyet vao:
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`
+   (thay `<TOKEN>` bang token o buoc 1) → tim so o `"chat":{"id": ...}` -
+   do la **chat ID** cua ban.
+3. Vao repo GitHub → **Settings** → **Secrets and variables** → **Actions**
+   → **New repository secret**, tao 2 secret:
+   - `TELEGRAM_BOT_TOKEN` = token o buoc 1
+   - `TELEGRAM_CHAT_ID` = id o buoc 2
+4. Xong — 2 workflow se tu chay theo lich. Muon test ngay khong doi lich,
+   vao tab **Actions** tren GitHub → chon workflow "Telegram Daily Digest"
+   hoac "Telegram Hourly Energy Check" → **Run workflow** de chay thu.
