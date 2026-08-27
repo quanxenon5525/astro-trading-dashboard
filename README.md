@@ -62,3 +62,19 @@ trang (co the bam nut lam moi hoac trang tu lam moi moi 60 giay).
 Sua truc tiep `data/macro_calendar.json` theo mau co san. Nguon tra cuu:
 - NFP/CPI/PPI: bls.gov/schedule/news_release/current_year.asp
 - FOMC: federalreserve.gov/newsevents/calendar.htm
+
+## Deploy len Render + gan domain rieng
+
+Da co san `render.yaml` — vao render.com > New > Blueprint > chon repo nay
+la Render tu doc cau hinh va deploy. Sau khi co URL that (`*.onrender.com`
+hoac domain rieng), vao Render > Environment > sua bien `APP_BASE_URL`
+thanh dung URL do roi deploy lai, de anh thumbnail khi chia se link
+(xem muc duoi) hien dung.
+
+## Anh thumbnail khi chia se link (Open Graph)
+
+Streamlit khong ho tro san the `<meta property="og:image">` vi trang chay
+dang single-page-app. `scripts/patch_og_tags.py` tu dong chen the nay vao
+file `index.html` tinh cua goi Streamlit ngay luc build tren Render (xem
+`buildCommand` trong `render.yaml`), dung anh `static/og-image.png`. Muon
+doi anh, thay file `static/og-image.png` (nen 1200x630px) roi deploy lai.

@@ -1,0 +1,4 @@
+[server]
+# Cho phep phuc vu file tinh trong thu muc static/ tai duong dan /app/static/...
+# (can de anh thumbnail og-image.png truy cap duoc tu ben ngoai cho link preview)
+enableStaticServing = true
