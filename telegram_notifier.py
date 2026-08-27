@@ -17,11 +17,10 @@ co san). Thiet ke de chay qua GitHub Actions scheduled workflow (xem
 Render Cron Job vi tinh nang do khong co trong goi Render mien phi.
 
 QUAN TRONG ve mui gio: script nay co the chay tren server o BAT KY mui gio
-nao (vd GitHub Actions chay UTC), nen KHONG dung .astimezone() khong tham
-so (nhu trong macro_calendar.py, von danh cho luc Streamlit chay tren may
-nguoi dung) - moi thoi diem trong file nay deu ep ro rang ve GIO VIET NAM
-(Asia/Ho_Chi_Minh, UTC+7 khong doi DST) bang ZoneInfo, dam bao dung gio du
-chay o dau.
+nao (vd GitHub Actions chay UTC), nen moi thoi diem trong file nay deu ep
+ro rang ve GIO VIET NAM (Asia/Ho_Chi_Minh, UTC+7 khong doi DST) bang
+ZoneInfo, dam bao dung gio du chay o dau. macro_calendar.event_local_datetime()
+gio cung da lam dung dieu nay (dung chung 1 cho, khong con tinh rieng o day).
 
 Bien moi truong can co (dat trong GitHub repo Settings > Secrets and
 variables > Actions):
@@ -45,7 +44,6 @@ import score_engine
 from i18n import ECLIPSE_LABELS, MOON_PHASE_LABELS, ZODIAC_LABELS
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-_ET_ZONE = ZoneInfo("America/New_York")
 LANG = "vi"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -66,18 +64,6 @@ _TREND_LABELS = {
 
 def now_vn() -> datetime.datetime:
     return datetime.datetime.now(VN_TZ)
-
-
-def event_vn_datetime(event: dict):
-    """Giong macro_calendar.event_local_datetime() nhung LUON quy ve gio
-    Viet Nam (khong phu thuoc mui gio cua may/server dang chay script)."""
-    t = event.get("time_et")
-    if not t or t == "-":
-        return None
-    d = datetime.date.fromisoformat(event["date"])
-    hh, mm = (int(x) for x in t.split(":"))
-    ny_dt = datetime.datetime(d.year, d.month, d.day, hh, mm, tzinfo=_ET_ZONE)
-    return ny_dt.astimezone(VN_TZ)
 
 
 def send_message(text: str) -> None:
@@ -115,7 +101,7 @@ def que_label(strength: int, bias: str) -> str:
 
 
 def _macro_line(e: dict) -> str:
-    vn_dt = event_vn_datetime(e)
+    vn_dt = macro_calendar.event_local_datetime(e)
     time_part = f" {vn_dt.strftime('%H:%M')}" if vn_dt else ""
     icon = "🔴" if e.get("impact") == "high" else "🟠"
     name = e.get("name_vi") or e.get("name_en", "")

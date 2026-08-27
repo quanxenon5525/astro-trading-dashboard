@@ -13,9 +13,11 @@ tinh, ban tu duy tri, dam bao ung dung chay duoc 100% offline.
 
 Gio phat hanh (time_et) duoc luu theo gio mien Dong Hoa Ky (America/New_York,
 tu dong xu ly EST/EDT) vi day la quy uoc chung cua BLS/Fed. ham
-event_local_datetime() chuyen no sang GIO MAY TINH dang chay app (dung
-zoneinfo, khong hardcode offset) de hien thi dung yeu cau "chi hien thi
-gio may tinh".
+event_local_datetime() chuyen no sang GIO VIET NAM (Asia/Ho_Chi_Minh,
+UTC+7 co dinh) - KHONG dung gio he thong cua server nua, vi ung dung da
+deploy len Streamlit Cloud/Render (chay o UTC hoac mui gio bat ky) va vi
+tri quan sat da co dinh la Ha Noi, nen tin tuc cung phai luon hien thi
+theo dung gio Viet Nam du chay o dau.
 """
 
 import datetime
@@ -25,6 +27,7 @@ from zoneinfo import ZoneInfo
 
 _DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "macro_calendar.json")
 _ET_ZONE = ZoneInfo("America/New_York")
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
 def _load_raw() -> dict:
@@ -89,16 +92,17 @@ def next_high_impact(from_date: datetime.date):
 
 def event_local_datetime(event: dict):
     """Chuyen 'time_et' (gio Dong Hoa Ky) cua 1 su kien sang datetime theo
-    GIO MAY TINH dang chay app (dung timezone that cua he thong, tu dong
-    tinh dung EST/EDT cho tung ngay). Tra ve None neu su kien khong co gio
-    cu the (time_et la '-')."""
+    GIO VIET NAM (Asia/Ho_Chi_Minh, UTC+7 co dinh khong DST) - LUON co dinh,
+    khong phu thuoc mui gio cua server dang chay app (Streamlit Cloud/Render
+    thuong chay o UTC). Tra ve None neu su kien khong co gio cu the (time_et
+    la '-')."""
     t = event.get("time_et")
     if not t or t == "-":
         return None
     d = datetime.date.fromisoformat(event["date"])
     hh, mm = (int(x) for x in t.split(":"))
     ny_dt = datetime.datetime(d.year, d.month, d.day, hh, mm, tzinfo=_ET_ZONE)
-    return ny_dt.astimezone()  # khong truyen tz -> Python tu doi ve gio he thong
+    return ny_dt.astimezone(VN_TZ)
 
 
 def last_verified() -> str:
