@@ -18,6 +18,13 @@
  * telegram_notifier.py (chay hang ngay/hang gio qua GitHub Actions) doc
  * lai danh sach nay qua Cloudflare KV REST API.
  *
+ * Lenh /check: tra ve NGAY ban tin chiem tinh hom nay ma khong can cho
+ * GitHub Actions chay lai - doc tu cache trong Cloudflare KV (key
+ * "latest_digest"), duoc telegram_notifier.py (Python, chay qua
+ * telegram_daily.yml/telegram_hourly.yml) LAM MOI moi gio. Worker nay
+ * KHONG tu tinh toan chiem tinh (khong the - logic do la Python), chi
+ * doc lai ban da tinh san.
+ *
  * CACH DEPLOY: xem huong dan chi tiet trong README.md muc "Thong bao qua
  * Telegram" - dan vao Cloudflare Dashboard, tao Worker moi, dan nguyen
  * noi dung file nay vao, gan KV namespace binding ten "SUBSCRIBERS_KV",
@@ -44,7 +51,12 @@ const GOODBYE_TEXT =
 
 const NOT_SUBSCRIBED_TEXT = "Bạn hiện chưa đăng ký nhận thông báo nào cả.";
 
+const NO_DIGEST_YET_TEXT =
+  "⏳ Chưa có dữ liệu bản tin hôm nay, vui lòng thử lại sau ít phút " +
+  "(bản tin được tạo tự động mỗi giờ).";
+
 const SUBSCRIBERS_KEY = "chat_ids";
+const DIGEST_CACHE_KEY = "latest_digest";
 
 async function getSubscribers(env) {
   const raw = await env.SUBSCRIBERS_KV.get(SUBSCRIBERS_KEY);
@@ -116,6 +128,9 @@ export default {
       } else {
         await sendMessage(env, chatId, NOT_SUBSCRIBED_TEXT);
       }
+    } else if (text.startsWith("/check")) {
+      const digest = await env.SUBSCRIBERS_KV.get(DIGEST_CACHE_KEY);
+      await sendMessage(env, chatId, digest || NO_DIGEST_YET_TEXT);
     }
 
     return new Response("ok", { status: 200 });

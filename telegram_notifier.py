@@ -65,6 +65,7 @@ CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
 CF_KV_NAMESPACE_ID = os.environ.get("CF_KV_NAMESPACE_ID", "")
 CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
 CF_SUBSCRIBERS_KEY = "chat_ids"
+CF_DIGEST_CACHE_KEY = "latest_digest"
 
 DISCLAIMER = "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phải lời khuyên đầu tư."
 APP_URL = "https://dubaochiemtinh.streamlit.app/"
@@ -73,6 +74,7 @@ APP_LINK_LINE = f"🔗 Truy cập {APP_URL} để xem chi tiết chiêm tinh"
 BOT_COMMANDS = [
     {"command": "start", "description": "Đăng ký nhận thông báo chiêm tinh hàng ngày"},
     {"command": "stop", "description": "Huỷ đăng ký, ngừng nhận thông báo"},
+    {"command": "check", "description": "Xem ngay chỉ báo chiêm tinh hôm nay"},
 ]
 
 _TREND_ARROWS = {"rising": "▲", "falling": "▼", "peak_mid": "◆", "flat": "→"}
@@ -131,6 +133,34 @@ def load_subscribers() -> list:
         return resp.json()
     except ValueError:
         return []
+
+
+def save_digest_cache(text: str) -> None:
+    """Luu ban tin chiem tinh hom nay vao Cloudflare KV (key
+    "latest_digest"), de lenh /check tren Telegram (xu ly boi Cloudflare
+    Worker - xem cloudflare/telegram_webhook.js) tra loi TUC THI ma
+    khong can cho GitHub Actions chay lai. An toan de cache: noi dung
+    build_daily_digest() hoan toan xac dinh THEO NGAY (khong phu thuoc
+    gio trong ngay, vi app khong lay du lieu gia/thi truong nao ca), nen
+    cache khong bao gio bi "sai lech" trong ngay - chi can lam moi it
+    nhat 1 lan/ngay. Ham nay duoc goi o CA 2 che do 'daily' va 'hourly'
+    trong main() de cache luon duoc lam moi hang gio (dam bao ngay sau
+    khi qua nua dem, cache cung nhanh chong duoc cap nhat sang ngay moi
+    ma khong phai doi den 7h sang)."""
+    if not (CF_ACCOUNT_ID and CF_KV_NAMESPACE_ID and CF_API_TOKEN):
+        return
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+        f"/storage/kv/namespaces/{CF_KV_NAMESPACE_ID}/values/{CF_DIGEST_CACHE_KEY}"
+    )
+    resp = requests.put(
+        url,
+        headers={"Authorization": f"Bearer {CF_API_TOKEN}"},
+        data=text.encode("utf-8"),
+        timeout=15,
+    )
+    if not resp.ok:
+        print(f"[telegram_notifier] Loi luu cache ban tin: {resp.status_code} {resp.text}", file=sys.stderr)
 
 
 def send_message(text: str, chat_id: int = None) -> None:
@@ -274,19 +304,25 @@ def build_hourly_alert():
 def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else "daily"
     if mode == "daily":
-        send_message(build_daily_digest())
+        digest = build_daily_digest()
+        send_message(digest)
+        save_digest_cache(digest)
     elif mode == "hourly":
         msg = build_hourly_alert()
         if msg:
             send_message(msg)
         else:
             print("[telegram_notifier] Giờ hiện tại không phải đầu 1 khung giờ sóng mạnh - không gửi.")
+        # Luon lam moi cache ban tin hang ngay o day (moi gio), de lenh
+        # /check tren Telegram luon co san du lieu tuong doi moi, khong
+        # phai cho den 7h sang hom sau.
+        save_digest_cache(build_daily_digest())
     elif mode == "setcommands":
         # Chi can chay 1 LAN DUY NHAT (thu cong) sau khi tao bot - dang ky
         # menu lenh "/" hien tren Telegram. Khong lien quan gi den viec
         # gui ban tin hang ngay/hang gio.
         set_bot_commands()
-        print("[telegram_notifier] Da dang ky menu lenh /start, /stop.")
+        print("[telegram_notifier] Da dang ky menu lenh /start, /stop, /check.")
     else:
         raise SystemExit(f"Mode khong hop le: '{mode}' (dung 'daily', 'hourly' hoac 'setcommands')")
 

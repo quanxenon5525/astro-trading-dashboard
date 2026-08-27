@@ -176,3 +176,18 @@ Muon sua lai loi chao/huy dang ky, sua truc tiep trong
 `cloudflare/telegram_webhook.js` (cac hang so `WELCOME_TEXT`,
 `GOODBYE_TEXT`...) roi dan lai vao Worker → Deploy - khong lien quan gi
 den `git push`/GitHub Actions ca, vi Worker la 1 dich vu doc lap.
+
+### Lenh /check - xem ngay ban tin ma khong can doi
+
+Go `/check` bat ky luc nao se tra loi **NGAY LAP TUC** ban tin chiem tinh
+cua hom nay, khong can doi den 7h sang hay dang ky gi ca. Co che: moi lan
+`telegram_daily.yml` (7h sang) hoac `telegram_hourly.yml` (moi gio) chay,
+`telegram_notifier.py` deu luu lai ban tin vao Cloudflare KV (key
+`latest_digest`); Worker chi doc lai ban da luu san nay, khong tu tinh
+toan chiem tinh (viec do can Python) nen dam bao tra loi tuc thi.
+
+Vi da doi `BOT_COMMANDS` trong `telegram_notifier.py` (them `/check`),
+can chay lai lenh dang ky menu 1 lan de menu "/" tren Telegram cap nhat:
+```
+TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py setcommands
+```
