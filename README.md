@@ -13,11 +13,21 @@ hoc/tai chinh hoc chinh thong cong nhan** va **khong phai loi khuyen dau tu**.
 
 | File | Vai tro |
 |---|---|
-| `astro.py` | Tinh pha trang that bang cong thuc thien van Meeus (khong can API/internet) + lich sao Thuy nghich hanh, nhat/nguyet thuc 2026 |
+| `astro.py` | Pha trang, kinh do/vi do Mat Trang, cung hoang dao that (cong thuc Meeus) + nghich hanh **tu dong tinh** cho moi hanh tinh/moi nam (khong con go tay ngay thang) + du lieu nhat/nguyet thuc 2026 |
+| `planets.py` | Vi tri that cua Sao Thuy/Kim/Hoa/Moc/Tho bang phuong phap Kepler Elements (chuan JPL/NASA, offline 100%) |
+| `aspects.py` | Goc chieu THAT (hop/luc hop/vuong/tam hop/doi dinh) giua Mat Troi/Mat Trang/5 hanh tinh, co dung sai (orb) va do "khop" (exactness) |
+| `houses.py` | Gio sao dia phuong + diem Moc (Ascendant) THAT theo toa do quan sat - nguon bien dong nhanh nhat trong ngay (Trai Dat tu quay) |
+| `moon_events.py` | Gio Mat Trang moc/lan THAT theo toa do + xac dinh khung gio Void-of-Course |
 | `macro_calendar.py` | Doc lich tin vi mo tu file JSON |
 | `data/macro_calendar.json` | Du lieu that: NFP, PPI, CPI, FOMC — **can tu cap nhat hang thang** (xem huong dan trong file) |
-| `score_engine.py` | Chuyen tin hieu chiem tinh thanh chi bao "vach xanh/do" 1-5 + song nang luong theo gio |
-| `app.py` | Dashboard Streamlit chinh (bieu do 30 ngay + drill-down theo gio) |
+| `score_engine.py` | Ghep tat ca thanh chi bao "vach xanh/do" 1-5/ngay + song nang luong that theo gio (Ascendant-Mat Trang + do cao Mat Trang + Void-of-Course) |
+| `i18n.py` | Toan bo nhan/nhan song ngu VN-EN (hanh tinh, goc chieu, cung hoang dao, giao dien...) |
+| `app.py` | Dashboard Streamlit chinh (bieu do 30 ngay + drill-down theo gio + chon vi tri quan sat) |
+
+### Do chinh xac da kiem chung (thang 8/2026)
+- Nghich hanh Sao Thuy 2026 tu tinh toan: 26/2-19/3, 29/6-22/7, 24/10-12/11 — khop +-1 ngay voi lich thuc da xac minh (26/2-20/3, 29/6-23/7, 24/10-13/11).
+- Sao Kim nghich hanh 1 lan trong 2026 (03/10-13/11, ~42 ngay) va Sao Hoa khong nghich hanh lan nao trong 2026 — dung theo chu ky that (Kim ~18 thang/lan, Hoa ~26 thang/lan).
+- Pha trang khop voi trang tron/trang non thuc 2026 (xem ghi chu trong `astro.py`).
 
 ## Chay local (tren may ban)
 

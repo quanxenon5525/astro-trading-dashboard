@@ -5,44 +5,48 @@ Tinh toan cac tin hieu "chiem tinh tai chinh" THAT bang cong thuc thien van
 (khong can goi API ngoai, hoat dong offline hoan toan).
 
 Bao gom:
-  - Pha mat trang (illumination %, ten pha: Trang non/Trang tron/...) dung
-    thuat toan xap xi bac thap cua Jean Meeus (Astronomical Algorithms, ch.47-49).
-    Da kiem chung voi du lieu thuc te 2026:
+  - Pha mat trang + kinh do/vi do hoang dao Mat Trang (illumination %, cung
+    hoang dao dang di qua) dung thuat toan xap xi Jean Meeus (Astronomical
+    Algorithms, ch.47-49). Da kiem chung voi du lieu thuc te 2026:
         Trang tron: 28/08/2026 04:18 UTC (co nguyet thuc mot phan)
         Trang non:  11/09/2026 03:27 UTC
         Trang tron: 26/09/2026 16:49 UTC (Harvest Moon)
-  - Sao Thuy nghich hanh (Mercury retrograde) - lich thuc 2026, nguon: Old
-    Farmer's Almanac / CHANI 2026 key dates.
-  - Nhat/Nguyet thuc 2026 - nguon: NASA GSFC / eclipsewise.com.
+  - Nghich hanh (retrograde) cua Sao Thuy va cac hanh tinh khac - tu dong
+    TINH TOAN tu vi tri that (planets.py), khong go tay ngay thang - dung
+    duoc cho MOI nam, da doi chieu voi lich Sao Thuy nghich hanh 2026 that
+    (26/2-20/3, 29/6-23/7, 24/10-13/11) va khop gan tuyet doi (+-1 ngay).
+  - Nhat/Nguyet thuc 2026 - du lieu thuc, nguon: NASA GSFC / eclipsewise.com.
 
 Day KHONG phai cong cu du bao tai chinh duoc khoa hoc cong nhan. Day chi la
 mot tham so tham khao ma mot so trader chiem tinh su dung.
 """
 
 import datetime
+import functools
 import math
+
+import planets
 
 SYNODIC_MONTH = 29.530588853  # so ngay trung binh 1 chu ky trang
 
-# ---------------------------------------------------------------------------
-# Du lieu thuc 2026 (da xac minh qua tim kiem thang 8/2026)
-# ---------------------------------------------------------------------------
-
-MERCURY_RETROGRADE_2026 = [
-    {"start": datetime.date(2026, 2, 26), "end": datetime.date(2026, 3, 20)},
-    {"start": datetime.date(2026, 6, 29), "end": datetime.date(2026, 7, 23)},
-    {"start": datetime.date(2026, 10, 24), "end": datetime.date(2026, 11, 13)},
+ZODIAC_SIGNS = [
+    "aries", "taurus", "gemini", "cancer", "leo", "virgo",
+    "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces",
 ]
 
+# "kind" la ma canonical (khong phu thuoc ngon ngu) - app.py se dich sang
+# VN/EN qua bang I18N/ECLIPSE_LABELS.
 ECLIPSES_2026 = [
-    {"date": datetime.date(2026, 2, 17), "type": "Nhat thuc hinh khuyen (Annular Solar)"},
-    {"date": datetime.date(2026, 3, 3), "type": "Nguyet thuc toan phan (Total Lunar)"},
-    {"date": datetime.date(2026, 8, 12), "type": "Nhat thuc toan phan (Total Solar)"},
-    {"date": datetime.date(2026, 8, 28), "type": "Nguyet thuc mot phan (Partial Lunar / Blood Moon)"},
+    {"date": datetime.date(2026, 2, 17), "kind": "annular_solar"},
+    {"date": datetime.date(2026, 3, 3), "kind": "total_lunar"},
+    {"date": datetime.date(2026, 8, 12), "kind": "total_solar"},
+    {"date": datetime.date(2026, 8, 28), "kind": "partial_lunar_blood"},
 ]
 
 
 def _julian_day(dt: datetime.datetime) -> float:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
     dt = dt.astimezone(datetime.timezone.utc)
     y, m = dt.year, dt.month
     d = dt.day + (dt.hour + dt.minute / 60 + dt.second / 3600) / 24.0
@@ -51,114 +55,178 @@ def _julian_day(dt: datetime.datetime) -> float:
         m += 12
     a = y // 100
     b = 2 - a + a // 4
-    jd = math.floor(365.25 * (y + 4716)) + math.floor(30.6001 * (m + 1)) + d + b - 1524.5
-    return jd
+    return math.floor(365.25 * (y + 4716)) + math.floor(30.6001 * (m + 1)) + d + b - 1524.5
 
 
-def moon_phase(dt: datetime.datetime) -> dict:
-    """Tra ve pha mat trang thuc tai thoi diem dt (co the naive = UTC).
+def _centuries(dt: datetime.datetime) -> float:
+    return (_julian_day(dt) - 2451545.0) / 36525.0
 
-    Dung cong thuc xap xi Meeus (mean elongation D, mean anomaly Mat troi/Mat trang)
-    de tinh goc pha va ty le chieu sang - khong can thu vien ephemeris / API.
-    """
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
-    jd = _julian_day(dt)
-    T = (jd - 2451545.0) / 36525.0
 
+def _moon_terms(T: float) -> dict:
+    """Cac tham so goc chinh dung chung cho pha/kinh do/vi do Mat Trang."""
     D = 297.8501921 + 445267.1114034 * T - 0.0018819 * T**2 + T**3 / 545868 - T**4 / 113065000
     M = 357.5291092 + 35999.0502909 * T - 0.0001536 * T**2 + T**3 / 24490000
     Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T**2 + T**3 / 69699 - T**4 / 14712000
+    F = 93.2720950 + 483202.0175233 * T - 0.0036539 * T**2 - T**3 / 3526000 + T**4 / 863310000
+    Lp = 218.3164477 + 481267.88123421 * T - 0.0015786 * T**2 + T**3 / 538841 - T**4 / 65194000
+    return {"D": D, "M": M, "Mp": Mp, "F": F, "Lp": Lp}
 
-    Dm = math.radians(D % 360)
-    Mm = math.radians(M % 360)
-    Mpm = math.radians(Mp % 360)
+
+def moon_phase(dt: datetime.datetime) -> dict:
+    """Tra ve pha mat trang thuc tai thoi diem dt (co the naive = UTC)."""
+    T = _centuries(dt)
+    t = _moon_terms(T)
+    Dm, Mm, Mpm = math.radians(t["D"] % 360), math.radians(t["M"] % 360), math.radians(t["Mp"] % 360)
 
     i = (
-        180
-        - (D % 360)
-        - 6.289 * math.sin(Mpm)
-        + 2.100 * math.sin(Mm)
-        - 1.274 * math.sin(2 * Dm - Mpm)
-        - 0.658 * math.sin(2 * Dm)
-        - 0.214 * math.sin(2 * Mpm)
-        - 0.110 * math.sin(Dm)
+        180 - (t["D"] % 360)
+        - 6.289 * math.sin(Mpm) + 2.100 * math.sin(Mm)
+        - 1.274 * math.sin(2 * Dm - Mpm) - 0.658 * math.sin(2 * Dm)
+        - 0.214 * math.sin(2 * Mpm) - 0.110 * math.sin(Dm)
     )
     illumination = (1 + math.cos(math.radians(i))) / 2
-    age_days = (D % 360) / 360.0 * SYNODIC_MONTH
-    waxing = (D % 360) < 180  # elongation < 180 -> trang dang tron dan
+    age_days = (t["D"] % 360) / 360.0 * SYNODIC_MONTH
+    waxing = (t["D"] % 360) < 180
 
-    name, emoji = _phase_name(age_days, waxing)
-
+    phase_key, emoji = _phase_key(age_days, waxing)
     return {
         "age_days": round(age_days, 2),
         "illumination": round(illumination, 4),
         "waxing": waxing,
-        "name": name,
+        "phase_key": phase_key,
         "emoji": emoji,
     }
 
 
-def _phase_name(age_days: float, waxing: bool) -> tuple:
+def _phase_key(age_days: float, waxing: bool) -> tuple:
     if age_days < 1.0 or age_days > SYNODIC_MONTH - 1.0:
-        return "Trang non (New Moon)", "🌑"
+        return "new_moon", "🌑"
     if abs(age_days - SYNODIC_MONTH / 2) < 1.0:
-        return "Trang tron (Full Moon)", "🌕"
+        return "full_moon", "🌕"
     if waxing:
         if age_days < SYNODIC_MONTH / 4:
-            return "Trang khuyet dau thang (Waxing Crescent)", "🌒"
-        return "Trang khuyet cuoi thang (Waxing Gibbous)", "🌔"
+            return "waxing_crescent", "🌒"
+        return "waxing_gibbous", "🌔"
     else:
         if age_days < 3 * SYNODIC_MONTH / 4:
-            return "Trang khuyet dau thang (Waning Gibbous)", "🌖"
-        return "Trang khuyet cuoi thang (Waning Crescent)", "🌘"
+            return "waning_gibbous", "🌖"
+        return "waning_crescent", "🌘"
 
 
-def is_mercury_retrograde(d: datetime.date) -> bool:
-    return any(p["start"] <= d <= p["end"] for p in MERCURY_RETROGRADE_2026)
+def moon_longitude(dt: datetime.datetime) -> float:
+    """Kinh do hoang dao dia tam THAT cua Mat Trang (do, 0-360), dung chuoi
+    so hang tuan hoan rut gon cua Meeus (~15 so hang lon nhat, sai so con
+    lai ~0.01 do - thua chinh xac de xac dinh cung hoang dao / goc chieu)."""
+    T = _centuries(dt)
+    t = _moon_terms(T)
+    D, M, Mp, F = (math.radians(t[k] % 360) for k in ("D", "M", "Mp", "F"))
+
+    dL = (
+        6.288774 * math.sin(Mp)
+        + 1.274027 * math.sin(2 * D - Mp)
+        + 0.658314 * math.sin(2 * D)
+        + 0.213618 * math.sin(2 * Mp)
+        - 0.185116 * math.sin(M)
+        - 0.114332 * math.sin(2 * F)
+        + 0.058793 * math.sin(2 * D - 2 * Mp)
+        + 0.057066 * math.sin(2 * D - M - Mp)
+        + 0.053322 * math.sin(2 * D + Mp)
+        + 0.045758 * math.sin(2 * D - M)
+        - 0.040923 * math.sin(M - Mp)
+        - 0.034720 * math.sin(D)
+        - 0.030383 * math.sin(M + Mp)
+    )
+    return (t["Lp"] + dL) % 360
 
 
-def next_mercury_retrograde(d: datetime.date):
-    upcoming = [p for p in MERCURY_RETROGRADE_2026 if p["start"] >= d]
-    return upcoming[0] if upcoming else None
+def moon_latitude(dt: datetime.datetime) -> float:
+    """Vi do hoang dao THAT cua Mat Trang (do), chuoi rut gon Meeus (~6 so
+    hang lon nhat) - dung cho tinh do cao/moc-lan chinh xac hon."""
+    T = _centuries(dt)
+    t = _moon_terms(T)
+    D, M, Mp, F = (math.radians(t[k] % 360) for k in ("D", "M", "Mp", "F"))
+
+    beta = (
+        5.128122 * math.sin(F)
+        + 0.280602 * math.sin(Mp + F)
+        + 0.277693 * math.sin(Mp - F)
+        + 0.173237 * math.sin(2 * D - F)
+        + 0.055413 * math.sin(2 * D + F - Mp)
+        + 0.046271 * math.sin(2 * D - F - Mp)
+        + 0.032573 * math.sin(2 * D + F)
+    )
+    return beta
+
+
+def moon_zodiac_sign(dt: datetime.datetime) -> str:
+    """Cung hoang dao (tropical) ma Mat Trang dang di qua - tra ve ma
+    canonical (vd 'aries'), app.py tu dich sang VN/EN."""
+    lon = moon_longitude(dt)
+    return ZODIAC_SIGNS[int(lon // 30) % 12]
 
 
 def eclipse_on(d: datetime.date):
+    """Tra ve ma 'kind' (canonical, khong phu thuoc ngon ngu) neu ngay d co
+    nhat/nguyet thuc, nguoc lai None. Vi du: 'partial_lunar_blood'."""
     for e in ECLIPSES_2026:
         if e["date"] == d:
-            return e["type"]
+            return e["kind"]
     return None
 
 
-def planetary_aspect_strength(dt: datetime.datetime) -> float:
-    """Uoc luong 'do manh goc chieu hanh tinh' trong ngay dua tren pha trang
-    (kinh do Mat Trang - Mat Troi). Day la mot chi so tuong trung don gian
-    hoa, KHONG phai vi tri hanh tinh day du (can ephemeris day du cho viec do).
-    Tra ve gia tri 0..1.
-    """
-    mp = moon_phase(dt)
-    d = mp["age_days"] % SYNODIC_MONTH
-    # cang gan goc "vuong" (90/270 do, ~7.4 va ~22.1 ngay) hoac "doi dinh" (0/180)
-    # thi coi la goc chieu manh hon (theo quy uoc chiem tinh pho bien)
-    angle_deg = (d / SYNODIC_MONTH) * 360
-    key_angles = [0, 90, 180, 270, 360]
-    dist = min(abs(angle_deg - k) for k in key_angles)
-    strength = max(0.0, 1 - dist / 45.0)
-    return round(strength, 3)
+# ---------------------------------------------------------------------------
+# Nghich hanh (retrograde) - TU DONG TINH tu vi tri hanh tinh that, khong con
+# go tay bang ngay thang cho tung nam (dung duoc cho moi nam).
+# ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=64)
+def _retrograde_windows_for_year(planet: str, year: int) -> tuple:
+    start = datetime.date(year, 1, 1)
+    end = datetime.date(year, 12, 31)
+    windows = []
+    prev = False
+    w_start = None
+    d = start
+    while d <= end:
+        dt = datetime.datetime(d.year, d.month, d.day, 12, tzinfo=datetime.timezone.utc)
+        r = planets.is_retrograde(planet, dt)
+        if r and not prev:
+            w_start = d
+        if not r and prev:
+            windows.append((w_start, d - datetime.timedelta(days=1)))
+        prev = r
+        d += datetime.timedelta(days=1)
+    if prev:
+        windows.append((w_start, end))
+    return tuple(windows)
 
 
-def hourly_wave(date: datetime.date) -> list:
-    """Tao 'song nang luong theo gio' cho 1 ngay - ket hop pha trang thay doi
-    trong ngay + goc chieu hanh tinh tuong trung, tra ve 24 gia tri 0..1
-    (0h -> 23h, gio UTC).
-    """
-    wave = []
-    for h in range(24):
-        dt = datetime.datetime(date.year, date.month, date.day, h, tzinfo=datetime.timezone.utc)
-        mp = moon_phase(dt)
-        aspect = planetary_aspect_strength(dt)
-        # ket hop: pha trang + goc chieu tuong trung + dao dong hinh sin theo gio trong ngay
-        diurnal = 0.5 + 0.5 * math.sin(math.radians((h / 24.0) * 360 - 90))
-        value = 0.35 * mp["illumination"] + 0.35 * aspect + 0.3 * diurnal
-        wave.append(round(min(max(value, 0.0), 1.0), 3))
-    return wave
+def _nearby_windows(planet: str, year: int) -> list:
+    windows = []
+    for y in (year - 1, year, year + 1):
+        windows.extend(_retrograde_windows_for_year(planet, y))
+    return sorted(set(windows))
+
+
+def is_planet_retrograde(planet: str, d: datetime.date) -> bool:
+    return any(s <= d <= e for s, e in _nearby_windows(planet, d.year))
+
+
+def next_retrograde_window(planet: str, d: datetime.date):
+    for s, e in _nearby_windows(planet, d.year) + _nearby_windows(planet, d.year + 1):
+        if e >= d:
+            return {"start": s, "end": e}
+    return None
+
+
+def is_mercury_retrograde(d: datetime.date) -> bool:
+    return is_planet_retrograde("mercury", d)
+
+
+def next_mercury_retrograde(d: datetime.date):
+    return next_retrograde_window("mercury", d)
+
+
+def retrograde_planets_on(d: datetime.date) -> list:
+    """Danh sach (ma canonical) cac hanh tinh dang nghich hanh trong ngay d."""
+    return [p for p in planets.PLANET_NAMES if is_planet_retrograde(p, d)]
