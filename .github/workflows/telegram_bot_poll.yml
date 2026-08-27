@@ -1,0 +1,38 @@
+name: Telegram Bot Listener
+
+on:
+  schedule:
+    # 5 phut la khoang toi thieu GitHub Actions ho tro cho schedule.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+# Bat buoc de buoc "Commit" o duoi co the git push lai bang GITHUB_TOKEN
+# mac dinh. Neu repo dang de "Read repository contents permission" (chi
+# doc) trong Settings > Actions > General > Workflow permissions, phai
+# doi sang "Read and write permissions" thi buoc nay moi thanh cong.
+permissions:
+  contents: write
+
+concurrency:
+  group: telegram-bot-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python telegram_bot_poll.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      - name: Commit danh sach dang ky neu co thay doi
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/subscribers.json data/telegram_offset.json
+          git diff --cached --quiet || git commit -m "chore: cap nhat danh sach dang ky Telegram [skip ci]"
+          git push

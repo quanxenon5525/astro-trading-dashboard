@@ -92,20 +92,41 @@ Render Cron Job la tinh nang tra phi nen khong dung):
 - **Hang gio** — `telegram_hourly.yml`: bao thoi gian thuc dung luc BAT
   DAU 1 khung gio song manh (khong lap lai trong cung 1 khung).
 
-### Cach thiet lap (1 lan duy nhat)
+Ca 2 loai tren duoc **BROADCAST cho MOI NGUOI da dang ky** (khong con gioi
+han 1 nguoi duy nhat) - xem phan dang ky nhieu nguoi ben duoi.
+
+### Cach thiet lap bot (1 lan duy nhat)
 
 1. **Tao bot**: nhan tin cho [@BotFather](https://t.me/BotFather) tren
    Telegram, go `/newbot`, dat ten → BotFather tra ve 1 **token** dang
    `123456:ABC-...`.
-2. **Lay chat ID**: nhan tin bat ky (vd "hi") cho bot vua tao, sau do mo
-   trinh duyet vao:
-   `https://api.telegram.org/bot<TOKEN>/getUpdates`
-   (thay `<TOKEN>` bang token o buoc 1) → tim so o `"chat":{"id": ...}` -
-   do la **chat ID** cua ban.
-3. Vao repo GitHub → **Settings** → **Secrets and variables** → **Actions**
-   → **New repository secret**, tao 2 secret:
+2. Vao repo GitHub → **Settings** → **Secrets and variables** → **Actions**
+   → **New repository secret**, tao 1 secret:
    - `TELEGRAM_BOT_TOKEN` = token o buoc 1
-   - `TELEGRAM_CHAT_ID` = id o buoc 2
-4. Xong — 2 workflow se tu chay theo lich. Muon test ngay khong doi lich,
-   vao tab **Actions** tren GitHub → chon workflow "Telegram Daily Digest"
-   hoac "Telegram Hourly Energy Check" → **Run workflow** de chay thu.
+   (secret `TELEGRAM_CHAT_ID` cu, neu co, khong con dung nua - co the xoa).
+3. Vao **Settings** → **Actions** → **General** → muc **Workflow
+   permissions**, chon **"Read and write permissions"** roi Save. Buoc nay
+   BAT BUOC de workflow lang nghe dang ky (`telegram_bot_poll.yml`) tu
+   commit lai duoc danh sach nguoi dang ky vao repo.
+4. Xong phan cai dat. Muon test ngay khong doi lich, vao tab **Actions**
+   tren GitHub → chon workflow can chay thu → **Run workflow**.
+
+### Cho phep nhieu nguoi dang ky (lenh /start, /stop)
+
+`telegram_bot_poll.py` (chay qua `telegram_bot_poll.yml`, kiem tra tin
+nhan moi moi 5 phut) lang nghe 2 lenh:
+
+- **/start** — dang ky nhan thong bao. Bot tra loi xac nhan + gui luon
+  ban tin chiem tinh cua hom nay ngay lap tuc (khong can doi den 7h sang
+  hom sau).
+- **/stop** — huy dang ky, khong nhan thong bao nua.
+
+Muon chia se cho nguoi khac cung dung, chi can gui link bot
+(`t.me/<username_bot>`) hoac username (`@<username_bot>`) - ai bam vao va
+go `/start` se tu dong duoc them vao danh sach nhan tin hang ngay/hang
+gio. Danh sach nay luu trong `data/subscribers.json`, tu dong duoc workflow
+cap nhat, khong can sua tay.
+
+Luu y: vi GitHub Actions chi ho tro lich chay dinh ky toi thieu moi 5
+phut (doi khi tre hon do tai he thong), phan hoi cho /start /stop co the
+mat vai phut chu khong tuc thi nhu bot chay server rieng.

@@ -16,6 +16,14 @@ co san). Thiet ke de chay qua GitHub Actions scheduled workflow (xem
 .github/workflows/telegram_daily.yml va telegram_hourly.yml) - KHONG dung
 Render Cron Job vi tinh nang do khong co trong goi Render mien phi.
 
+NHIEU NGUOI DUNG: khong con gui toi 1 TELEGRAM_CHAT_ID co dinh nua. Danh
+sach nguoi da dang ky duoc luu trong data/subscribers.json (list chat_id),
+ai cung co the tu dang ky bang cach nhan /start cho bot - xem
+telegram_bot_poll.py (script rieng, chay qua telegram_bot_poll.yml, lang
+nghe lenh /start va /stop) de biet cach danh sach nay duoc cap nhat.
+send_message() o day se gui cho TAT CA nguoi trong danh sach khi khong
+truyen chat_id cu the.
+
 QUAN TRONG ve mui gio: script nay co the chay tren server o BAT KY mui gio
 nao (vd GitHub Actions chay UTC), nen moi thoi diem trong file nay deu ep
 ro rang ve GIO VIET NAM (Asia/Ho_Chi_Minh, UTC+7 khong doi DST) bang
@@ -24,15 +32,16 @@ gio cung da lam dung dieu nay (dung chung 1 cho, khong con tinh rieng o day).
 
 Bien moi truong can co (dat trong GitHub repo Settings > Secrets and
 variables > Actions):
-  TELEGRAM_BOT_TOKEN - token bot lay tu @BotFather
-  TELEGRAM_CHAT_ID   - id chat/nhom se nhan tin (xem huong dan trong README)
+  TELEGRAM_BOT_TOKEN - token bot lay tu @BotFather (secret TELEGRAM_CHAT_ID
+  cu khong con can thiet nua, co the xoa)
 
 Cach chay thu cong (debug):
-  TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx python telegram_notifier.py daily
-  TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx python telegram_notifier.py hourly
+  TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py daily
+  TELEGRAM_BOT_TOKEN=xxx python telegram_notifier.py hourly
 """
 
 import datetime
+import json
 import os
 import sys
 from zoneinfo import ZoneInfo
@@ -47,7 +56,7 @@ VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 LANG = "vi"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+SUBSCRIBERS_PATH = os.path.join(os.path.dirname(__file__), "data", "subscribers.json")
 
 DISCLAIMER = "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phải lời khuyên đầu tư."
 APP_URL = "https://dubaochiemtinh.streamlit.app/"
@@ -66,27 +75,75 @@ def now_vn() -> datetime.datetime:
     return datetime.datetime.now(VN_TZ)
 
 
-def send_message(text: str) -> None:
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+def load_subscribers() -> list:
+    """Doc danh sach chat_id da dang ky nhan thong bao. Tra ve [] neu file
+    chua ton tai (chua ai dang ky) - khong loi."""
+    if not os.path.exists(SUBSCRIBERS_PATH):
+        return []
+    with open(SUBSCRIBERS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f).get("chat_ids", [])
+
+
+def save_subscribers(chat_ids: list) -> None:
+    os.makedirs(os.path.dirname(SUBSCRIBERS_PATH), exist_ok=True)
+    with open(SUBSCRIBERS_PATH, "w", encoding="utf-8") as f:
+        json.dump({"chat_ids": sorted(set(chat_ids))}, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+
+def add_subscriber(chat_id: int) -> bool:
+    """Them 1 nguoi dang ky moi. Tra ve True neu la nguoi MOI (chua co
+    truoc do), False neu da dang ky roi (idempotent - nhan /start nhieu
+    lan khong bi trung)."""
+    ids = load_subscribers()
+    if chat_id in ids:
+        return False
+    ids.append(chat_id)
+    save_subscribers(ids)
+    return True
+
+
+def remove_subscriber(chat_id: int) -> bool:
+    """Xoa 1 nguoi dang ky (lenh /stop). Tra ve True neu thuc su co xoa."""
+    ids = load_subscribers()
+    if chat_id not in ids:
+        return False
+    ids.remove(chat_id)
+    save_subscribers(ids)
+    return True
+
+
+def send_message(text: str, chat_id: int = None) -> None:
+    """Gui 1 tin nhan. Neu chat_id=None (mac dinh), gui BROADCAST cho TOAN
+    BO danh sach da dang ky trong data/subscribers.json. Loi khi gui cho 1
+    nguoi (vd ho da chan/xoa bot) chi duoc LOG lai, KHONG lam dung ca vong
+    lap - nhung nguoi con lai van phai nhan duoc tin."""
+    if not TELEGRAM_BOT_TOKEN:
         raise SystemExit(
-            "Thieu TELEGRAM_BOT_TOKEN hoac TELEGRAM_CHAT_ID trong bien moi truong "
+            "Thieu TELEGRAM_BOT_TOKEN trong bien moi truong "
             "(xem huong dan trong README.md muc 'Thong bao qua Telegram')."
         )
+    targets = [chat_id] if chat_id is not None else load_subscribers()
+    if not targets:
+        print("[telegram_notifier] Chua co ai dang ky nhan tin (data/subscribers.json rong) - khong gui.")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    resp = requests.post(
-        url,
-        json={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-        timeout=15,
-    )
-    if not resp.ok:
-        print(f"[telegram_notifier] Loi gui tin: {resp.status_code} {resp.text}", file=sys.stderr)
-        resp.raise_for_status()
-    print("[telegram_notifier] Da gui tin nhan thanh cong.")
+    for cid in targets:
+        resp = requests.post(
+            url,
+            json={
+                "chat_id": cid,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+            timeout=15,
+        )
+        if not resp.ok:
+            print(f"[telegram_notifier] Loi gui toi {cid}: {resp.status_code} {resp.text}", file=sys.stderr)
+            continue
+        print(f"[telegram_notifier] Da gui toi {cid}.")
 
 
 # ---------------------------------------------------------------------------
