@@ -38,18 +38,45 @@ def all_events() -> list:
     return sorted(events, key=lambda e: e["date"])
 
 
+def _recurring_events_in_range(start: datetime.date, end: datetime.date) -> list:
+    """Cac su kien LAP LAI DINH KY hang tuan - hien tai la Initial Jobless
+    Claims (so nguoi nop don xin tro cap that nghiep lan dau), Bo Lao Dong
+    My cong bo THU NAM hang tuan luc 8:30 ET gan nhu khong doi. Sinh TU
+    DONG cho khoang [start, end] thay vi phai tu tay them tung tuan vao
+    file JSON tinh (khong thuc te voi su kien lap lai 52 lan/nam) nhu cac
+    su kien hang thang/hang quy khac (NFP/CPI/PPI/FOMC).
+
+    Luu y: vai dip co ngay le lien ke, BLS doi cong bo sang THU TU - truong
+    hop hiem nay khong duoc xu ly tu dong o day, neu biet truoc thi them
+    ghi chu/sua ngay thu cong."""
+    events = []
+    d = start
+    while d <= end:
+        if d.weekday() == 3:  # Thu Hai=0 ... Thu Nam=3
+            events.append({
+                "date": d.isoformat(),
+                "time_et": "08:30",
+                "name_vi": "Số người nộp đơn xin trợ cấp thất nghiệp lần đầu (Initial Jobless Claims)",
+                "name_en": "Initial Jobless Claims",
+                "impact": "medium",
+                "source": "U.S. Department of Labor",
+            })
+        d += datetime.timedelta(days=1)
+    return events
+
+
 def events_in_range(start: datetime.date, end: datetime.date) -> list:
     out = []
     for e in all_events():
         d = datetime.date.fromisoformat(e["date"])
         if start <= d <= end:
             out.append(e)
-    return out
+    out.extend(_recurring_events_in_range(start, end))
+    return sorted(out, key=lambda e: (e["date"], e.get("time_et") or ""))
 
 
 def events_on(d: datetime.date) -> list:
-    ds = d.isoformat()
-    return [e for e in all_events() if e["date"] == ds]
+    return events_in_range(d, d)
 
 
 def next_high_impact(from_date: datetime.date):
