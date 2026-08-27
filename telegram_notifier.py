@@ -52,6 +52,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 DISCLAIMER = "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phải lời khuyên đầu tư."
+APP_URL = "https://dubaochiemtinh.streamlit.app/"
+APP_LINK_LINE = f"🔗 Truy cập {APP_URL} để xem chi tiết chiêm tinh"
 
 _TREND_ARROWS = {"rising": "▲", "falling": "▼", "peak_mid": "◆", "flat": "→"}
 _TREND_LABELS = {
@@ -170,6 +172,7 @@ def build_daily_digest() -> str:
     lines.extend([_macro_line(e) for e in today_events] if today_events else ["Không có sự kiện nào."])
 
     lines.append("")
+    lines.append(APP_LINK_LINE)
     lines.append(DISCLAIMER)
     return "\n".join(lines)
 
@@ -199,6 +202,7 @@ def build_hourly_alert():
         f"Xu hướng: {arrow} {trend_text}",
         f"Đỉnh năng lượng: {detail['peak']:.2f}",
         "",
+        APP_LINK_LINE,
         DISCLAIMER,
     ]
     return "\n".join(lines)
