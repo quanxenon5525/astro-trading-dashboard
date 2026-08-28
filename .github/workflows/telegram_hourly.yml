@@ -2,9 +2,14 @@ name: Telegram Hourly Energy Check
 
 on:
   schedule:
-    # Chay vao phut 0 moi gio (UTC) - vi VN la UTC+7 co dinh (khong DST),
-    # moc gio VN cung luon roi dung vao phut 0, khong bi lech.
-    - cron: "0 * * * *"
+    # Chay vao PHUT 7 moi gio (UTC), KHONG phai phut 0. Theo tai lieu
+    # chinh thuc cua GitHub, lich chay dung vao phut 0 (dau moi gio) la
+    # thoi diem TAI CAO NHAT toan he thong GitHub Actions, de bi tre hoac
+    # bi BO QUA hoan toan - day rat co the la ly do lich hang gio chua
+    # tung tu chay lan nao. Chay o phut 7 khong anh huong logic, vi
+    # build_hourly_alert() chi so sanh theo GIO (now.hour), khong quan
+    # tam phut le, nen van xac dinh dung khung gio song manh bat dau.
+    - cron: "7 * * * *"
   workflow_dispatch: {}
 
 jobs:
