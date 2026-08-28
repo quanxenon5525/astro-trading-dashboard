@@ -18,8 +18,8 @@ hoc/tai chinh hoc chinh thong cong nhan** va **khong phai loi khuyen dau tu**.
 | `aspects.py` | Goc chieu THAT (hop/luc hop/vuong/tam hop/doi dinh) giua Mat Troi/Mat Trang/5 hanh tinh, co dung sai (orb) va do "khop" (exactness) |
 | `houses.py` | Gio sao dia phuong + diem Moc (Ascendant) THAT theo toa do quan sat - nguon bien dong nhanh nhat trong ngay (Trai Dat tu quay) |
 | `moon_events.py` | Gio Mat Trang moc/lan THAT theo toa do + xac dinh khung gio Void-of-Course |
-| `macro_calendar.py` | Doc lich tin vi mo tu file JSON |
-| `data/macro_calendar.json` | Du lieu that: NFP, PPI, CPI, FOMC — **can tu cap nhat hang thang** (xem huong dan trong file) |
+| `macro_calendar.py` | Doc lich tin vi mo: file JSON tinh (NFP/CPI/PPI/FOMC) + quy tac lap lai (Jobless Claims hang tuan) + **tu dong bo sung** cac tin My tam quan trong cao khac (PCE, ISM PMI, Retail Sales...) tu feed cong khai cua ForexFactory |
+| `data/macro_calendar.json` | Du lieu tinh: NFP, PPI, CPI, FOMC — **can tu cap nhat hang thang** (xem huong dan trong file) |
 | `score_engine.py` | Ghep tat ca thanh chi bao "vach xanh/do" 1-5/ngay + song nang luong that theo gio (Ascendant-Mat Trang + do cao Mat Trang + Void-of-Course) |
 | `i18n.py` | Toan bo nhan/nhan song ngu VN-EN (hanh tinh, goc chieu, cung hoang dao, giao dien...) |
 | `app.py` | Dashboard Streamlit chinh (bieu do 30 ngay + drill-down theo gio + chon vi tri quan sat) |
@@ -64,6 +64,36 @@ trang (co the bam nut lam moi hoac trang tu lam moi moi 60 giay).
 Sua truc tiep `data/macro_calendar.json` theo mau co san. Nguon tra cuu:
 - NFP/CPI/PPI: bls.gov/schedule/news_release/current_year.asp
 - FOMC: federalreserve.gov/newsevents/calendar.htm
+
+## Tin vi mo tu dong bo sung (ForexFactory)
+
+Ngoai file JSON tinh o tren, `macro_calendar.py` con TU DONG tai them cac
+tin kinh te My **tam quan trong cao** (tuong duong 3 sao tren
+investing.com) tu feed JSON cong khai, mien phi cua ForexFactory
+(`nfs.faireconomy.media`) - vi du PCE, ISM PMI, Retail Sales, Housing
+Starts... la nhung tin ma file tinh khong theo doi het.
+
+Ly do khong dung truc tiep investing.com: trang do can chay JavaScript
+moi hien du lieu that (khong the tu dong doc bang script don gian), va
+dieu khoan su dung cua ho khong cho phep tu dong sao chep/luu tru du
+lieu. ForexFactory cung cap san 1 file JSON cong khai duoc rat nhieu bot
+giao dich su dung, khong bi han che tuong tu.
+
+**Gioi han can biet:**
+- Feed nay chi co du lieu "tuan nay" + "tuan sau" (khong co ca thang), nen
+  chi bo sung duoc tin trong ~2 tuan toi - xa hon van chi dua vao file
+  JSON tinh.
+- Neu ForexFactory gap su co (mat mang, doi dinh dang du lieu...), phan
+  bo sung nay tu dong bo qua (co log canh bao), KHONG lam hong ung dung -
+  danh sach tinh + Jobless Claims van hoat dong binh thuong.
+- Sandbox cua Claude (moi truong lam viec cua Cowork) chan duoc ket noi
+  toi domain nay nen KHONG the tu kiem tra truc tiep du lieu that - da
+  test bang du lieu gia lap (mock) va xac nhan logic loc/gop/cache dung,
+  nhung CAN chay thu qua GitHub Actions (moi truong do co mang binh
+  thuong) de xac nhan dinh dang du lieu that khop voi code. Neu sau khi
+  chay thu ma khong thay tin ForexFactory nao xuat hien, gui lai log cua
+  buoc `python telegram_notifier.py daily` de dieu chinh lai cach doc du
+  lieu cho dung.
 
 ## Deploy len Render + gan domain rieng
 
