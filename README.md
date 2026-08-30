@@ -117,7 +117,7 @@ doi anh, thay file `static/og-image.png` (nen 1200x630px) roi deploy lai.
 **GitHub Actions** (chay doc lap, khong can Render dang thuc hay khong -
 Render Cron Job la tinh nang tra phi nen khong dung):
 
-- **Hang ngay (7h sang, VN)** — `telegram_daily.yml`: chi bao chiem tinh
+- **Hang ngay (~6h sang, VN)** — `telegram_daily.yml`: chi bao chiem tinh
   hom nay (xanh/do + "que" Dai Cat/Cat/Tieu Cat/Binh/Tieu Hung/Hung/Dai
   Hung), toan bo khung gio song manh du kien trong ngay, tin vi mo NGAY
   MAI (nhac truoc 1 ngay) va tin vi mo HOM NAY (nhac dung ngay).
@@ -210,8 +210,8 @@ den `git push`/GitHub Actions ca, vi Worker la 1 dich vu doc lap.
 ### Lenh /check - xem ngay ban tin ma khong can doi
 
 Go `/check` bat ky luc nao se tra loi **NGAY LAP TUC** ban tin chiem tinh
-cua hom nay, khong can doi den 7h sang hay dang ky gi ca. Co che: moi lan
-`telegram_daily.yml` (7h sang) hoac `telegram_hourly.yml` (moi gio) chay,
+cua hom nay, khong can doi den 6h sang hay dang ky gi ca. Co che: moi lan
+`telegram_daily.yml` (~6h sang) hoac `telegram_hourly.yml` (moi gio) chay,
 `telegram_notifier.py` deu luu lai ban tin vao Cloudflare KV (key
 `latest_digest`); Worker chi doc lai ban da luu san nay, khong tu tinh
 toan chiem tinh (viec do can Python) nen dam bao tra loi tuc thi.
