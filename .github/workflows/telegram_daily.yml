@@ -2,13 +2,13 @@ name: Telegram Daily Digest
 
 on:
   schedule:
-    # 00:07 UTC = 07:07 gio Viet Nam. CO Y LECH 7 PHUT thay vi dung "0 0"
-    # (dung gio, dau ngay): theo tai lieu chinh thuc cua GitHub, cac lich
-    # chay dung vao PHUT 0 (dau moi gio) la thoi diem TAI CAO NHAT tren
-    # toan he thong GitHub Actions, de bi tre hoac BI BO QUA hoan toan (nhat
-    # la voi repo public/free, uu tien thap hon repo tra phi). Day rat co
-    # the la ly do lich 7h sang chua tung tu chay duoc lan nao.
-    - cron: "7 0 * * *"
+    # 23:07 UTC (ngay hom truoc) = 06:07 gio Viet Nam (vi UTC+7, 23:07 UTC
+    # + 7 gio = 06:07 ngay hom sau - cach tinh nay hoan toan binh thuong,
+    # cron luon tinh theo UTC). Van co y LECH 7 PHUT (khong dung "0") vi
+    # theo tai lieu chinh thuc cua GitHub, lich chay dung PHUT 0 la thoi
+    # diem TAI CAO NHAT toan he thong, de bi tre/bo qua - nhat la voi repo
+    # public/free bi uu tien thap hon repo tra phi.
+    - cron: "7 23 * * *"
   workflow_dispatch: {}
 
 jobs:
