@@ -2,13 +2,13 @@ name: Telegram Daily Digest
 
 on:
   schedule:
-    # 23:07 UTC (ngay hom truoc) = 06:07 gio Viet Nam (vi UTC+7, 23:07 UTC
-    # + 7 gio = 06:07 ngay hom sau - cach tinh nay hoan toan binh thuong,
-    # cron luon tinh theo UTC). Van co y LECH 7 PHUT (khong dung "0") vi
-    # theo tai lieu chinh thuc cua GitHub, lich chay dung PHUT 0 la thoi
-    # diem TAI CAO NHAT toan he thong, de bi tre/bo qua - nhat la voi repo
-    # public/free bi uu tien thap hon repo tra phi.
-    - cron: "7 23 * * *"
+    # 21:07 UTC = 04:07 gio Viet Nam (vi UTC+7). Dieu chinh TRUOC 2 gio de
+    # compensate cho delay cua GitHub Actions (thong thuong bi tre 1-2h va
+    # repo public/free bi uu tien thap hon). Target thuc te: 06:07 gio VN.
+    # Van giữ LECH 7 PHUT (khong dung "0") vi theo tai lieu chinh thuc cua
+    # GitHub, lich chay dung PHUT 0 la thoi diem TAI CAO NHAT toan he thong,
+    # de bi tre/bo qua - nhat la voi repo public/free.
+    - cron: "7 21 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -22,6 +22,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python telegram_notifier.py daily
         env:
+          TZ: Asia/Ho_Chi_Minh
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
