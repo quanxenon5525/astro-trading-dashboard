@@ -22,9 +22,13 @@ theo dung gio Viet Nam du chay o dau.
 BO SUNG TU DONG (ForexFactory): ngoai file JSON tinh (chi co NFP/CPI/PPI/
 FOMC, phai tu cap nhat hang thang) va quy tac lap lai (Jobless Claims),
 module nay con TU DONG tai them cac su kien kinh te My TAM QUAN TRONG CAO
-(tuong duong "3 sao" tren investing.com) tu file JSON cong khai, mien phi
-cua ForexFactory (nfs.faireconomy.media) - vd PCE, ISM PMI, Retail Sales,
-Housing Starts... la nhung tin ma file tinh khong theo doi het.
+HOAC TRUNG BINH (tuong duong "2-3 sao" tren investing.com) tu file JSON
+cong khai, mien phi cua ForexFactory (nfs.faireconomy.media) - vd PCE, ISM
+PMI, Retail Sales, Housing Starts... la nhung tin ma file tinh khong theo
+doi het. Voi cac su kien DA CO SAN trong file tinh/quy tac lap lai (vd
+NFP, Jobless Claims), du lieu Ky vong/Truoc do/Thuc te tu ForexFactory
+duoc GHEP (merge) vao thay vi tao dong moi, vi file tinh khong tu theo doi
+duoc 3 truong nay (xem events_in_range()).
 
 KHONG dung truc tiep investing.com vi trang do (1) can chay JavaScript
 moi hien du lieu that (fetch don gian khong doc duoc) va (2) dieu khoan
@@ -67,6 +71,13 @@ def _load_raw() -> dict:
 def all_events() -> list:
     raw = _load_raw()
     events = raw.get("events", [])
+    for e in events:
+        # File JSON tinh (NFP/CPI/PPI/FOMC) khong theo doi Ky vong/Truoc do/
+        # Thuc te - dat mac dinh "-" de app.py/telegram_notifier.py luon co
+        # the hien thi dong nhat 3 truong nay cho MOI su kien, du nguon nao.
+        e.setdefault("forecast", "-")
+        e.setdefault("previous", "-")
+        e.setdefault("actual", "-")
     return sorted(events, key=lambda e: e["date"])
 
 
@@ -92,6 +103,11 @@ def _recurring_events_in_range(start: datetime.date, end: datetime.date) -> list
                 "name_en": "Initial Jobless Claims",
                 "impact": "medium",
                 "source": "U.S. Department of Labor",
+                # Quy tac lap lai tu sinh, khong theo doi rieng Ky vong/Truoc
+                # do/Thuc te - dat mac dinh "-" (dong nhat voi all_events()).
+                "forecast": "-",
+                "previous": "-",
+                "actual": "-",
             })
         d += datetime.timedelta(days=1)
     return events
@@ -126,15 +142,25 @@ def _fetch_forexfactory_feed(name: str) -> list:
 
 def _normalize_ff_event(raw: dict):
     """Chuyen 1 dong du lieu tho ForexFactory sang dung format su dung
-    trong app. CHI GIU su kien cua My (USD) va tam quan trong CAO ("High"
-    - tuong duong 3 sao tren investing.com). Tra ve None neu khong khop
-    dieu kien hoac thieu du truong (dinh dang cua ForexFactory co the doi
-    khac di theo thoi gian - ham nay thu vai ten truong pho bien, neu vao
-    tuong lai ho doi dinh dang thi chi phan bo sung nay ngung hoat dong,
-    KHONG anh huong danh sach tinh/quy tac lap lai)."""
+    trong app. CHI GIU su kien cua My (USD) va tam quan trong CAO ("High")
+    HOAC TRUNG BINH ("Medium") - da MO RONG tu chi-High truoc day de cac
+    tin trung binh da co san trong danh sach (vd Initial Jobless Claims)
+    cung nhan duoc Ky vong/Truoc do/Thuc te that thay vi luon la "-"; tin
+    "Low" van bi bo qua de tranh nhieu qua nhieu tin nho khong quan trong.
+    Tra ve None neu khong khop dieu kien hoac thieu du truong (dinh dang
+    cua ForexFactory co the doi khac di theo thoi gian - ham nay thu vai
+    ten truong pho bien, neu vao tuong lai ho doi dinh dang thi chi phan
+    bo sung nay ngung hoat dong, KHONG anh huong danh sach tinh/quy tac
+    lap lai)."""
     currency = str(raw.get("currency") or raw.get("country") or "").strip().upper()
-    impact = str(raw.get("impact") or raw.get("impactTitle") or "").strip().lower()
-    if currency != "USD" or "high" not in impact:
+    impact_raw = str(raw.get("impact") or raw.get("impactTitle") or "").strip().lower()
+    if currency != "USD":
+        return None
+    if "high" in impact_raw:
+        impact = "high"
+    elif "medium" in impact_raw:
+        impact = "medium"
+    else:
         return None
 
     date_str = raw.get("date")
@@ -149,14 +175,34 @@ def _normalize_ff_event(raw: dict):
     et_dt = dt.astimezone(_ET_ZONE)
 
     title = str(raw.get("title") or raw.get("event") or "Sự kiện kinh tế Mỹ").strip()
+
+    # ForexFactory co san 3 truong nay ngay trong feed - "actual" chi co GIA
+    # TRI sau khi tin duoc CONG BO THAT (truoc do la chuoi rong ""), nen chi
+    # can doc lai MOI LAN fetch (co cache 30 phut, xem _fetch_forexfactory_feed)
+    # la coi nhu "cap nhat real-time" ngay khi co ket qua, khong can co che
+    # polling rieng.
+    def _field(*keys):
+        for k in keys:
+            v = raw.get(k)
+            if v not in (None, ""):
+                return str(v).strip()
+        return "-"
+
+    forecast = _field("forecast")
+    previous = _field("previous")
+    actual = _field("actual")
+
     return {
         "date": et_dt.date().isoformat(),
         "time_et": et_dt.strftime("%H:%M"),
         # ForexFactory chi co ten tieng Anh, chua co ban dich VN rieng.
         "name_vi": title,
         "name_en": title,
-        "impact": "high",
+        "impact": impact,
         "source": "Forex Factory",
+        "forecast": forecast,
+        "previous": previous,
+        "actual": actual,
     }
 
 
@@ -183,13 +229,25 @@ def events_in_range(start: datetime.date, end: datetime.date) -> list:
 
     # Bo sung tu ForexFactory, TRANH TRUNG LAP voi su kien da co (vd NFP da
     # co san trong file JSON tinh voi ten tieng Viet chuan) bang cach so
-    # sanh (ngay, gio) - neu da co roi thi bo qua ban ForexFactory.
-    existing_keys = {(e["date"], e.get("time_et")) for e in out}
+    # sanh (ngay, gio). QUAN TRONG: neu da co roi thi KHONG them 1 dong moi
+    # (tranh hien thi 2 lan), NHUNG VAN GHEP (merge) Ky vong/Truoc do/Thuc
+    # te tu ban ForexFactory VAO su kien tinh da co - vi file JSON tinh
+    # (NFP/CPI/PPI/FOMC) chi co ngay/gio/ten, KHONG theo doi 3 truong nay,
+    # nen neu chi "bo qua ban ForexFactory" nhu truoc day thi NFP/CPI/PPI
+    # (nhung tin quan trong nhat) se VINH VIEN chi hien thi "-" du
+    # ForexFactory thuc su co du lieu that cho dung ngay/gio do.
+    existing_by_key = {(e["date"], e.get("time_et")): e for e in out}
     for e in _forexfactory_events_in_range(start, end):
         key = (e["date"], e.get("time_et"))
-        if key not in existing_keys:
+        existing = existing_by_key.get(key)
+        if existing is None:
             out.append(e)
-            existing_keys.add(key)
+            existing_by_key[key] = e
+        else:
+            for field in ("forecast", "previous", "actual"):
+                val = e.get(field, "-")
+                if val not in (None, "", "-"):
+                    existing[field] = val
 
     return sorted(out, key=lambda e: (e["date"], e.get("time_et") or ""))
 

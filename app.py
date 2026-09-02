@@ -365,6 +365,11 @@ with st.sidebar:
             local_dt = macro_calendar.event_local_datetime(e)
             time_part = f" {local_dt.strftime('%H:%M')}" if local_dt else ""
             st.markdown(f"{impact_icon} **{d.strftime('%d/%m')}**{time_part} — {macro_name(e)}")
+            st.caption(
+                f"{t('macro_forecast_label')}: {e.get('forecast', '-')} · "
+                f"{t('macro_previous_label')}: {e.get('previous', '-')} · "
+                f"{t('macro_actual_label')}: {e.get('actual', '-')}"
+            )
     else:
         st.caption(t("sidebar_macro_none"))
 
@@ -777,6 +782,11 @@ if hourly["macro_events"]:
         local_dt = macro_calendar.event_local_datetime(e)
         time_part = f"{local_dt.strftime('%H:%M')} — " if local_dt else ""
         st.markdown(f"- {time_part}**{macro_name(e)}** ({e['source']})")
+        st.caption(
+            f"{t('macro_forecast_label')}: {e.get('forecast', '-')} · "
+            f"{t('macro_previous_label')}: {e.get('previous', '-')} · "
+            f"{t('macro_actual_label')}: {e.get('actual', '-')}"
+        )
 
 st.divider()
 st.caption(t("footer_disclaimer"))

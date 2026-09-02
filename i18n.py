@@ -132,6 +132,9 @@ xanh/đỏ" là quy ước chiêm tinh phổ biến, không phải dự báo có
         "strong_hours_none": "Không xác định được khung giờ nổi bật.",
         "tags_title": "Sự kiện / nhãn đặc biệt trong ngày:",
         "macro_today_title": "📅 Tin vĩ mô trong ngày này:",
+        "macro_forecast_label": "Kỳ vọng",
+        "macro_previous_label": "Trước đó",
+        "macro_actual_label": "Thực tế",
         "footer_disclaimer": (
             "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phải lời khuyên đầu tư. "
             "Dữ liệu pha trăng / nghịch hành / nhật-nguyệt thực và lịch tin vĩ mô là dữ liệu thật, "
@@ -218,6 +221,9 @@ astrological convention, not a scientifically grounded forecast.
         "strong_hours_none": "No standout hours detected.",
         "tags_title": "Special events / tags for this day:",
         "macro_today_title": "📅 Macro news on this day:",
+        "macro_forecast_label": "Forecast",
+        "macro_previous_label": "Previous",
+        "macro_actual_label": "Actual",
         "footer_disclaimer": (
             "⚠️ Reference tool of an astrological nature, not investment advice. "
             "Moon phase / retrograde / eclipse data and the macro news calendar are real data, "

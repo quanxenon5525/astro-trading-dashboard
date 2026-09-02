@@ -2,7 +2,13 @@
 telegram_notifier.py
 ---------------------
 Gui thong bao qua Telegram Bot ve:
-  1. Tin vi mo: nhac truoc 1 ngay + nhac lai dung ngay xay ra.
+  1. Tin vi mo: nhac truoc 1 ngay + nhac lai dung ngay xay ra (ban tin sang,
+     'daily'), CONG THEM 2 canh bao THOI GIAN THUC qua che do 'hourly':
+       a. Truoc ~2 gio khi 1 tin sap dien ra (Ky vong + Truoc do).
+       b. Ngay khi co so lieu Thuc te vua duoc ForexFactory cong bo.
+     Ca 2 canh bao nay dung Cloudflare KV de danh dau da bao, tranh gui
+     trung lap qua nhieu lan chay cron hang gio (xem
+     build_macro_pre_alerts/build_macro_actual_alerts).
   2. Chi bao chiem tinh trong ngay: xanh/do + "que" (Dai Cat/Cat/Tieu Cat/
      Binh/Tieu Hung/Hung/Dai Hung) suy tu do manh tin hieu (1-5) + bias -
      dung DUNG cac gia tri co san tu score_engine.daily_signal(), khong
@@ -47,6 +53,7 @@ Cach chay thu cong (debug):
 """
 
 import datetime
+import json
 import os
 import sys
 from zoneinfo import ZoneInfo
@@ -66,6 +73,14 @@ CF_KV_NAMESPACE_ID = os.environ.get("CF_KV_NAMESPACE_ID", "")
 CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
 CF_SUBSCRIBERS_KEY = "chat_ids"
 CF_DIGEST_CACHE_KEY = "latest_digest"
+CF_MACRO_STATE_KEY = "macro_notified_state"
+
+# Bao truoc bao nhieu gio khi co 1 tin vi mo sap dien ra (theo yeu cau).
+MACRO_PRE_ALERT_HOURS = 2.0
+# Do rong "cua so" quanh moc MACRO_PRE_ALERT_HOURS (vi cron chay MOI GIO 1
+# lan - xem telegram_hourly.yml - nen phai co 1 khoang du rong de chac chan
+# co 1 lan chay roi vao dung khoang "~2 gio truoc", khong bi troi qua mat).
+MACRO_PRE_ALERT_WINDOW_HOURS = 0.6
 
 DISCLAIMER = "⚠️ Công cụ tham khảo mang tính chiêm tinh, không phải lời khuyên đầu tư."
 APP_URL = "https://dubaochiemtinh.streamlit.app/"
@@ -163,6 +178,53 @@ def save_digest_cache(text: str) -> None:
         print(f"[telegram_notifier] Loi luu cache ban tin: {resp.status_code} {resp.text}", file=sys.stderr)
 
 
+def load_macro_notified_state() -> dict:
+    """Doc trang thai 'da bao tin vi mo nao roi' tu Cloudflare KV (key
+    "macro_notified_state") - CAN co bo nho nay vi GitHub Actions chay
+    "khong trang thai" (moi lan chay la 1 may ao moi), nen phai luu vao
+    Cloudflare KV (giong subscribers/digest cache) de KHONG bao lai trung
+    lap cung 1 tin qua nhieu lan chay hang gio. Tra ve cau truc rong neu
+    thieu cau hinh Cloudflare hoac chua tung luu - khong loi, chi co nguy
+    co bao lai 1-2 lan trong truong hop hiem nay (uu tien khong crash)."""
+    empty = {"pre2h": [], "actual": []}
+    if not (CF_ACCOUNT_ID and CF_KV_NAMESPACE_ID and CF_API_TOKEN):
+        return empty
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+        f"/storage/kv/namespaces/{CF_KV_NAMESPACE_ID}/values/{CF_MACRO_STATE_KEY}"
+    )
+    resp = requests.get(url, headers={"Authorization": f"Bearer {CF_API_TOKEN}"}, timeout=15)
+    if resp.status_code == 404:
+        return empty
+    if not resp.ok:
+        print(f"[telegram_notifier] Loi doc trang thai tin vi mo: {resp.status_code} {resp.text}", file=sys.stderr)
+        return empty
+    try:
+        data = resp.json()
+        data.setdefault("pre2h", [])
+        data.setdefault("actual", [])
+        return data
+    except ValueError:
+        return empty
+
+
+def save_macro_notified_state(state: dict) -> None:
+    if not (CF_ACCOUNT_ID and CF_KV_NAMESPACE_ID and CF_API_TOKEN):
+        return
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+        f"/storage/kv/namespaces/{CF_KV_NAMESPACE_ID}/values/{CF_MACRO_STATE_KEY}"
+    )
+    resp = requests.put(
+        url,
+        headers={"Authorization": f"Bearer {CF_API_TOKEN}"},
+        data=json.dumps(state).encode("utf-8"),
+        timeout=15,
+    )
+    if not resp.ok:
+        print(f"[telegram_notifier] Loi luu trang thai tin vi mo: {resp.status_code} {resp.text}", file=sys.stderr)
+
+
 def send_message(text: str, chat_id: int = None) -> None:
     """Gui 1 tin nhan. Neu chat_id=None (mac dinh), gui BROADCAST cho TOAN
     BO danh sach dang ky doc tu Cloudflare KV. Loi khi gui cho 1 nguoi (vd
@@ -212,12 +274,140 @@ def _macro_line(e: dict) -> str:
     time_part = f" {vn_dt.strftime('%H:%M')}" if vn_dt else ""
     icon = "🔴" if e.get("impact") == "high" else "🟠"
     name = e.get("name_vi") or e.get("name_en", "")
-    return f"{icon}{time_part} — {name}"
+    # Ky vong / Truoc do / Thuc te - doc truc tiep tu du lieu da chuan hoa
+    # trong macro_calendar.py (forecast/previous/actual); su kien tinh
+    # (NFP/CPI/PPI/FOMC trong file JSON) mac dinh la "-" ca 3 truong, chi
+    # su kien tu ForexFactory moi co gia tri that.
+    kv = e.get("forecast", "-")
+    td = e.get("previous", "-")
+    tt = e.get("actual", "-")
+    return f"{icon}{time_part} — {name}\n   KV: {kv} · TĐ: {td} · TT: {tt}"
 
 
 def _hour_range_label(range_str: str) -> str:
     start_s, end_s = range_str.split("-")
     return f"{int(start_s.split(':')[0])}h → {int(end_s.split(':')[0])}h"
+
+
+def _macro_event_key(e: dict) -> str:
+    """Khoa duy nhat cho 1 su kien vi mo, dung de chong bao TRUNG LAP qua
+    Cloudflare KV - ghep ngay + gio ET + ten tieng Anh (on dinh hon ten VN
+    vi co the sua lai cau chu ma khong doi ban chat su kien)."""
+    return f"{e['date']}|{e.get('time_et', '-')}|{e.get('name_en') or e.get('name_vi', '')}"
+
+
+def _prune_macro_state(state: dict, today: datetime.date, keep_days: int = 10) -> dict:
+    """Xoa cac khoa qua cu (ngay nam ngoai [today - keep_days, today]) khoi
+    trang thai da bao, tranh danh sach phinh to vo han theo thoi gian."""
+    cutoff = today - datetime.timedelta(days=keep_days)
+
+    def _keep(key: str) -> bool:
+        try:
+            d = datetime.date.fromisoformat(key.split("|", 1)[0])
+        except ValueError:
+            return True
+        return d >= cutoff
+
+    return {
+        "pre2h": [k for k in state.get("pre2h", []) if _keep(k)],
+        "actual": [k for k in state.get("actual", []) if _keep(k)],
+    }
+
+
+def build_macro_pre_alerts() -> list:
+    """Bao TRUOC 2 GIO khi co 1 tin vi mo sap dien ra (theo yeu cau) - chi
+    ap dung cho su kien co GIO CU THE (time_et khac '-'), vi khong the tinh
+    'con bao nhieu gio nua' cho su kien chi co ngay (vd FOMC ngay 1/2). Dung
+    Cloudflare KV de danh dau da bao roi, tranh gui trung lap qua nhieu lan
+    chay cron hang gio."""
+    now = now_vn()
+    today = now.date()
+    state = load_macro_notified_state()
+    already_sent = set(state.get("pre2h", []))
+    lo = MACRO_PRE_ALERT_HOURS - MACRO_PRE_ALERT_WINDOW_HOURS
+    hi = MACRO_PRE_ALERT_HOURS + MACRO_PRE_ALERT_WINDOW_HOURS
+
+    alerts = []
+    new_keys = []
+    for offset in range(-1, 3):  # tu HOM QUA (theo ngay ET) den 2 ngay toi
+        # QUAN TRONG: "date" cua su kien la ngay theo GIO ET (xem
+        # macro_calendar.py), nhung "today" o day la ngay theo GIO VN - 1
+        # su kien cong bo cuoi ngay ET (vd FOMC 14:00 ET ~ 01:00 sang hom
+        # sau gio VN) se co "date" (ET) LUI 1 NGAY so voi ngay VN luc no
+        # thuc su dien ra - phai quet ca "hom qua" (theo ET) moi khong bi
+        # sot cac truong hop nay.
+        for e in macro_calendar.events_on(today + datetime.timedelta(days=offset)):
+            local_dt = macro_calendar.event_local_datetime(e)
+            if not local_dt:
+                continue
+            diff_hours = (local_dt - now).total_seconds() / 3600.0
+            if not (lo <= diff_hours <= hi):
+                continue
+            key = _macro_event_key(e)
+            if key in already_sent:
+                continue
+            name = e.get("name_vi") or e.get("name_en", "")
+            lines = [
+                "⏰ <b>Sắp có tin vĩ mô!</b>",
+                f"{name}",
+                f"Thời gian: <b>{local_dt.strftime('%H:%M %d/%m')}</b> (giờ VN) — còn khoảng {MACRO_PRE_ALERT_HOURS:.0f} giờ nữa",
+                f"Kỳ vọng: {e.get('forecast', '-')} · Trước đó: {e.get('previous', '-')}",
+                "",
+                APP_LINK_LINE,
+                DISCLAIMER,
+            ]
+            alerts.append("\n".join(lines))
+            new_keys.append(key)
+
+    if new_keys:
+        state["pre2h"] = list(already_sent | set(new_keys))
+        state = _prune_macro_state(state, today)
+        save_macro_notified_state(state)
+    return alerts
+
+
+def build_macro_actual_alerts() -> list:
+    """Bao NGAY KHI co so lieu Thuc te vua duoc cong bo (so voi lan fetch
+    truoc do tu ForexFactory van con la '-') - vi cron chay moi gio (xem
+    telegram_hourly.yml), do tre toi da la ~1 gio ke tu luc tin cong bo
+    thuc su, cham nhat la khi feed ForexFactory cap nhat gia tri 'actual'.
+    Dung Cloudflare KV de chi bao DUNG 1 LAN cho moi su kien."""
+    now = now_vn()
+    today = now.date()
+    state = load_macro_notified_state()
+    already_sent = set(state.get("actual", []))
+
+    alerts = []
+    new_keys = []
+    for offset in range(-2, 1):  # tin cong bo tu 2 ngay truoc den hom nay
+        for e in macro_calendar.events_on(today + datetime.timedelta(days=offset)):
+            local_dt = macro_calendar.event_local_datetime(e)
+            if not local_dt or local_dt > now:
+                continue  # chua toi gio cong bo thi chua co so lieu thuc te
+            actual = e.get("actual", "-")
+            if not actual or actual == "-":
+                continue  # ForexFactory chua cap nhat gia tri that
+            key = _macro_event_key(e)
+            if key in already_sent:
+                continue
+            name = e.get("name_vi") or e.get("name_en", "")
+            lines = [
+                "📊 <b>Đã có số liệu thực tế!</b>",
+                f"{name}",
+                f"Thời gian công bố: {local_dt.strftime('%H:%M %d/%m')} (giờ VN)",
+                f"Thực tế: <b>{actual}</b> · Kỳ vọng: {e.get('forecast', '-')} · Trước đó: {e.get('previous', '-')}",
+                "",
+                APP_LINK_LINE,
+                DISCLAIMER,
+            ]
+            alerts.append("\n".join(lines))
+            new_keys.append(key)
+
+    if new_keys:
+        state["actual"] = list(already_sent | set(new_keys))
+        state = _prune_macro_state(state, today)
+        save_macro_notified_state(state)
+    return alerts
 
 
 def build_daily_digest() -> str:
@@ -313,6 +503,15 @@ def main() -> None:
             send_message(msg)
         else:
             print("[telegram_notifier] Giờ hiện tại không phải đầu 1 khung giờ sóng mạnh - không gửi.")
+
+        # Canh bao tin vi mo: truoc ~2 gio khi tin sap dien ra, VA ngay khi
+        # co so lieu Thuc te vua duoc cong bo - moi tin chi bao dung 1 lan
+        # cho moi loai (xem build_macro_pre_alerts/build_macro_actual_alerts).
+        for alert in build_macro_pre_alerts():
+            send_message(alert)
+        for alert in build_macro_actual_alerts():
+            send_message(alert)
+
         # Luon lam moi cache ban tin hang ngay o day (moi gio), de lenh
         # /check tren Telegram luon co san du lieu tuong doi moi, khong
         # phai cho den 7h sang hom sau.
