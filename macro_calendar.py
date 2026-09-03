@@ -43,6 +43,20 @@ phut (theo huong dan chinh thuc cua ho) - vi vay co 1 cache trong bo nho
 moi trang lien tuc. Neu fetch loi (mat mang, doi dinh dang...) chi LOG
 canh bao, KHONG lam crash ca ung dung - danh sach tinh + quy tac lap lai
 van hoat dong binh thuong du thieu phan bo sung nay.
+
+QUAN TRONG - vi sao can THEM ca FRED: da XAC MINH truc tiep (fetch that +
+doi chieu voi cong dong dung chung feed nay) rang ff_calendar_thisweek/
+nextweek.json KHONG BAO GIO mang theo "actual" cho BAT KY su kien nao -
+day chi la feed LICH + DU BAO, khong phai feed KET QUA. Vi vay "Thuc te"
+cho cac su kien TINH (NFP/CPI/PPI/Jobless Claims/FOMC) duoc bo sung THEM
+tu FRED (Federal Reserve Economic Data, fred.stlouisfed.org) - kho du lieu
+CHINH THUC cua chinh BLS/Fed cong bo, MIEN PHI, can 1 API KEY tu dang ky
+(fred.stlouisfed.org/docs/api/api_key.html) dat vao bien moi truong
+FRED_API_KEY. Neu thieu key, phan bo sung nay TU DONG bo qua (Thuc te van
+la "-" nhu truoc), KHONG lam hong ung dung. Xem _enrich_actual_from_fred().
+FRED KHONG co Ky vong/Truoc do (khong phai nguon du bao) nen 2 truong do
+VAN lay tu ForexFactory nhu cu - day la 2 nguon BO SUNG LAN NHAU, khong
+thay the nhau.
 """
 
 import datetime
@@ -219,6 +233,181 @@ def _forexfactory_events_in_range(start: datetime.date, end: datetime.date) -> l
     return events
 
 
+# ---------------------------------------------------------------------------
+# FRED (Federal Reserve Economic Data) - bo sung THUC TE CHINH THUC cho cac
+# su kien TINH (NFP/CPI/PPI/Jobless Claims/FOMC) ma ForexFactory KHONG mang
+# theo (xem ghi chu o dau file). MIEN PHI, can bien moi truong FRED_API_KEY -
+# neu thieu, moi ham o day tra ve None/[] va TOAN BO tinh nang tu dong tat,
+# KHONG anh huong phan con lai cua app.
+# ---------------------------------------------------------------------------
+FRED_API_KEY = os.environ.get("FRED_API_KEY", "")
+if not FRED_API_KEY:
+    # telegram_notifier.py (chay qua GitHub Actions) doc bien moi truong
+    # binh thuong o tren; nhung app.py (Streamlit Cloud) thuong luu secret
+    # trong st.secrets thay vi bien moi truong he thong - thu doc them tu
+    # do NEU co, nhung KHONG import streamlit cung (macro_calendar.py phai
+    # doc lap, dung duoc ca khi khong co Streamlit nhu trong telegram_notifier.py).
+    try:
+        import streamlit as _st
+        FRED_API_KEY = _st.secrets.get("FRED_API_KEY", "")
+    except Exception:  # noqa: BLE001 - khong chay trong Streamlit, hoac chua co secrets.toml
+        pass
+_FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
+_FRED_CACHE_TTL_SECONDS = 60 * 60  # 1 gio - du lieu FRED cap nhat hang thang/hang tuan, khong can lam moi lien tuc
+_fred_cache: dict = {}  # {(series_id, units): {"ts": epoch, "obs": [...]}}
+
+
+def _fetch_fred_series(series_id: str, units: str = "lin", limit: int = 2) -> list:
+    """Lay toi da `limit` quan sat GAN NHAT (moi nhat truoc) cua 1 chuoi
+    FRED. `units` dung tham so transform co san cua FRED API - "lin" = gia
+    tri goc, "pch" = % thay doi so voi ky truoc (dung cho CPI/PPI m/m).
+    Tra ve [] neu thieu API key, loi mang, hoac dinh dang la (khong raise -
+    day chi la nguon BO SUNG cho Thuc te, khong duoc lam hong ung dung)."""
+    if not FRED_API_KEY:
+        return []
+    cache_key = (series_id, units, limit)
+    cached = _fred_cache.get(cache_key)
+    now = time.time()
+    if cached and (now - cached["ts"] < _FRED_CACHE_TTL_SECONDS):
+        return cached["obs"]
+    try:
+        resp = requests.get(
+            _FRED_BASE_URL,
+            params={
+                "series_id": series_id,
+                "api_key": FRED_API_KEY,
+                "file_type": "json",
+                "sort_order": "desc",
+                "units": units,
+                "limit": limit,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        obs = [o for o in data.get("observations", []) if o.get("value") not in (None, ".", "")]
+        _fred_cache[cache_key] = {"ts": now, "obs": obs}  # chi cap nhat "ts" khi THANH CONG
+        return obs
+    except Exception as exc:  # noqa: BLE001 - co y bat rong, day la nguon bo sung
+        print(f"[macro_calendar] Loi tai FRED series '{series_id}': {exc}", file=sys.stderr)
+        return cached["obs"] if cached else []
+
+
+def _fred_nfp_actual():
+    """NFP: PAYEMS la MUC tong so viec lam (nghin nguoi), ban tin bao THAY
+    DOI THANG/THANG - tu tinh hieu so 2 quan sat gan nhat. LUU Y: BLS
+    DIEU CHINH LAI (revise) so lieu 1-2 thang truoc moi lan cong bo moi,
+    FRED phan anh dung ban da dieu chinh, nen so chenh lech tinh duoc o
+    day co the hoi khac ban tin GOC da cong bo luc do (thuong chi lech nhe,
+    chap nhan duoc voi 1 cong cu THAM KHAO)."""
+    obs = _fetch_fred_series("PAYEMS", units="lin", limit=2)
+    if len(obs) < 2:
+        return None
+    try:
+        diff = float(obs[0]["value"]) - float(obs[1]["value"])
+        return f"{diff:.0f}K"
+    except (ValueError, KeyError):
+        return None
+
+
+def _fred_pct_change_actual(series_id: str):
+    """Dung cho CPI/PPI: FRED tra thang % thay doi so voi ky truoc (m/m)
+    truc tiep qua tham so units=pch, khop voi cach bao tin thong thuong."""
+    obs = _fetch_fred_series(series_id, units="pch", limit=1)
+    if not obs:
+        return None
+    try:
+        return f"{float(obs[0]['value']):.1f}%"
+    except (ValueError, KeyError):
+        return None
+
+
+def _fred_jobless_claims_actual():
+    """ICSA (Initial Claims) la SO NGUOI thuc (vd 231000) - quy doi ve
+    don vi 'K' cho khop cach bao tin thong thuong (vd '231K')."""
+    obs = _fetch_fred_series("ICSA", units="lin", limit=1)
+    if not obs:
+        return None
+    try:
+        return f"{float(obs[0]['value']) / 1000:.0f}K"
+    except (ValueError, KeyError):
+        return None
+
+
+def _fred_fomc_rate_actual():
+    """Quyet dinh lai suat FOMC duoc bao dang KHOANG (vd '4.25%-4.50%') -
+    ghep tu 2 chuoi can tren (DFEDTARU) va can duoi (DFEDTARL)."""
+    upper = _fetch_fred_series("DFEDTARU", units="lin", limit=1)
+    lower = _fetch_fred_series("DFEDTARL", units="lin", limit=1)
+    if not upper or not lower:
+        return None
+    try:
+        u, l = float(upper[0]["value"]), float(lower[0]["value"])
+        return f"{l:.2f}%-{u:.2f}%"
+    except (ValueError, KeyError):
+        return None
+
+
+def _fred_actual_for_event(name_en: str):
+    """Doi chieu TEN su kien voi 1 trong 5 loai tin TINH ma app dang theo
+    doi, tra ve ham tinh Thuc te FRED tuong ung - None neu khong khop (vd
+    ADP la bao cao TU NHAN, FRED khong theo doi nen luon tra None cho no,
+    van tiep tuc lay '-' hoac cho ForexFactory tu bo sung sau nay neu ho
+    doi dinh dang).
+
+    QUAN TRONG: khop TEN phai du "long" de bat duoc CA 2 kieu dat ten khac
+    nhau cho CUNG 1 su kien - file JSON tinh cua app dung "Nonfarm Payrolls
+    (NFP)...", nhung ForexFactory (khi tu no cung cap 1 dong KHONG trung
+    voi static, vd ngoai pham vi thang dang theo doi trong file tinh) lai
+    dat ten la "Non-Farm Employment Change" - khac han ve tu ngu. Dong thoi
+    PHAI loai tru "Core" (CPI/PPI loi tru thuc pham/nang luong) vi day la
+    CHI SO KHAC, khac hoan toan chi so headline (CPIAUCSL/PPIFIS) dang
+    theo doi - gan nham se cho ra Thuc te SAI."""
+    n = (name_en or "").lower()
+    if "adp" in n:
+        return None
+    if "core" in n:
+        return None  # chi so "loi tru" khac han headline dang theo doi - KHONG gan nham
+
+    n_flat = n.replace("-", " ").replace("_", " ")
+    n_nospace = n_flat.replace(" ", "")
+    if "nonfarm" in n_nospace and ("payroll" in n_flat or "employment change" in n_flat):
+        return _fred_nfp_actual()
+    if n.startswith("cpi") or "consumer price index" in n:
+        return _fred_pct_change_actual("CPIAUCSL")
+    if n.startswith("ppi") or "producer price index" in n:
+        return _fred_pct_change_actual("PPIFIS")
+    if "jobless claims" in n or "unemployment claims" in n:
+        return _fred_jobless_claims_actual()
+    if "fomc" in n and "rate" in n:
+        return _fred_fomc_rate_actual()
+    return None
+
+
+def _enrich_actual_from_fred(events: list, today: datetime.date) -> None:
+    """Dien Thuc te tu FRED cho cac su kien VAN CON '-' sau khi da thu
+    ghep ForexFactory (xem events_in_range()) - CHI ap dung cho su kien co
+    ngay <= hom nay (da/dang dien ra), tranh hien thi nham so lieu cua KY
+    TRUOC cho 1 su kien CHUA xay ra (FRED luon tra ve quan sat GAN NHAT du
+    su kien tuong ung chua toi ngay). Sua truc tiep tren cac dict trong
+    `events` (mutate in-place), khong tao list moi."""
+    if not FRED_API_KEY:
+        return
+    for e in events:
+        if e.get("actual", "-") != "-":
+            continue
+        try:
+            d = datetime.date.fromisoformat(e["date"])
+        except (ValueError, KeyError):
+            continue
+        if d > today:
+            continue
+        name = e.get("name_en") or e.get("name_vi", "")
+        actual = _fred_actual_for_event(name)
+        if actual:
+            e["actual"] = actual
+
+
 def events_in_range(start: datetime.date, end: datetime.date) -> list:
     out = []
     for e in all_events():
@@ -236,9 +425,21 @@ def events_in_range(start: datetime.date, end: datetime.date) -> list:
     # nen neu chi "bo qua ban ForexFactory" nhu truoc day thi NFP/CPI/PPI
     # (nhung tin quan trong nhat) se VINH VIEN chi hien thi "-" du
     # ForexFactory thuc su co du lieu that cho dung ngay/gio do.
-    existing_by_key = {(e["date"], e.get("time_et")): e for e in out}
+    #
+    # Khoa merge PHAI tinh them ca "co phai ban 'Core' hay khong" - vi BLS
+    # thuong cong bo CPI/PPI headline VA "Core" (loi tru thuc pham/nang
+    # luong) CUNG LUC, TRUNG (ngay, gio) - neu chi khoa theo (ngay, gio) se
+    # co nguy co GHEP NHAM so lieu "Core" vao dong headline dang theo doi
+    # (hoac nguoc lai), sai lech hoan toan y nghia con so hien thi.
+    def _is_core(name: str) -> bool:
+        return "core" in (name or "").lower()
+
+    existing_by_key = {
+        (e["date"], e.get("time_et"), _is_core(e.get("name_en") or e.get("name_vi"))): e
+        for e in out
+    }
     for e in _forexfactory_events_in_range(start, end):
-        key = (e["date"], e.get("time_et"))
+        key = (e["date"], e.get("time_et"), _is_core(e.get("name_en")))
         existing = existing_by_key.get(key)
         if existing is None:
             out.append(e)
@@ -249,7 +450,13 @@ def events_in_range(start: datetime.date, end: datetime.date) -> list:
                 if val not in (None, "", "-"):
                     existing[field] = val
 
-    return sorted(out, key=lambda e: (e["date"], e.get("time_et") or ""))
+    result = sorted(out, key=lambda e: (e["date"], e.get("time_et") or ""))
+    # Buoc cuoi: voi su kien nao VAN CON "-" (ForexFactory khong co, hoac
+    # khong mang theo actual - xem ghi chu dau file), thu bo sung Thuc te
+    # tu FRED - nguon CHINH THUC cua BLS/Fed, chi hoat dong neu co
+    # FRED_API_KEY (bo qua an toan neu thieu, xem _enrich_actual_from_fred).
+    _enrich_actual_from_fred(result, datetime.datetime.now(VN_TZ).date())
+    return result
 
 
 def events_on(d: datetime.date) -> list:

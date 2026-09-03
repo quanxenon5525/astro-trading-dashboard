@@ -27,3 +27,4 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
